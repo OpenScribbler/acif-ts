@@ -2,6 +2,9 @@
   "name": "acif-ts",
   "private": true,
   "type": "module",
+  "bin": {
+    "acif": "./bin/acif.ts"
+  },
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
