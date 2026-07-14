@@ -1,0 +1,285 @@
+# ACIF conformance vectors — TV-URI-* ([ACIF-REGISTRY] §10, Appendix A)
+# Normative. Two harness families; conformance MUST NOT be claimed on the static family alone.
+
+- id: TV-URI-a
+  spec: "[ACIF-REGISTRY] §10.3 step 3"
+  harness: static
+  description: case normalization — scheme+host folded, percent-hex uppercased, path case preserved
+  input: {uri: "HTTPS://GitHub.IO/A%3ab"}
+  expect: {source_uri: "https://github.io/A%3Ab"}
+
+- id: TV-URI-b
+  spec: "[ACIF-REGISTRY] §10.3 step 5"
+  harness: static
+  description: percent-decode unreserved
+  input: {uri: "https://example.com/a%2Db%7Ec"}
+  expect: {source_uri: "https://example.com/a-b~c"}
+
+- id: TV-URI-c
+  spec: "[ACIF-REGISTRY] §10.3 step 5"
+  harness: static
+  description: reserved characters not decoded
+  input: {uri: "https://example.com/a%2Fb"}
+  expect: {source_uri: "https://example.com/a%2Fb"}
+
+- id: TV-URI-d
+  spec: "[ACIF-REGISTRY] §10.3 steps 5–6"
+  harness: static
+  description: encoded dot-segments decode then collapse (order pin)
+  input: {uri: "https://example.com/x/%2E%2E/y"}
+  expect: {source_uri: "https://example.com/y"}
+
+- id: TV-URI-e
+  spec: "[ACIF-REGISTRY] §10.3 step 6"
+  harness: static
+  description: literal dot-segment removal
+  input: {uri: "https://example.com/a/./b/../c"}
+  expect: {source_uri: "https://example.com/a/c"}
+
+- id: TV-URI-f
+  spec: "[ACIF-REGISTRY] §10.3 step 7"
+  harness: static
+  description: default port stripped, non-default kept
+  input:
+    cases:
+      - {uri: "https://example.com:443/x"}
+      - {uri: "https://example.com:8443/x"}
+  expect:
+    case_1: {source_uri: "https://example.com/x"}
+    case_2: {source_uri: "https://example.com:8443/x"}
+
+- id: TV-URI-g
+  spec: "[ACIF-REGISTRY] §10.3 step 7"
+  harness: static
+  description: empty path becomes /
+  input: {uri: "https://example.com"}
+  expect: {source_uri: "https://example.com/"}
+
+- id: TV-URI-h
+  spec: "[ACIF-REGISTRY] §10.3 step 8"
+  harness: static
+  description: fragment stripped
+  input: {uri: "https://example.com/x#readme"}
+  expect: {source_uri: "https://example.com/x"}
+
+- id: TV-URI-i
+  spec: "[ACIF-REGISTRY] §10.3 step 9"
+  harness: static
+  description: query prohibition; dangling ? removed
+  input:
+    cases:
+      - {uri: "https://example.com/x?token=secret"}
+      - {uri: "https://example.com/x?"}
+  expect:
+    case_1: {error: acif.source_uri.query_present}
+    case_2: {source_uri: "https://example.com/x"}
+
+- id: TV-URI-j
+  spec: "[ACIF-REGISTRY] §10.2"
+  harness: static
+  description: scheme gate and malformed forms
+  input:
+    cases:
+      - {uri: "http://example.com/x"}
+      - {uri: "git@github.com:o/r.git"}
+      - {uri: "javascript:alert(1)"}
+      - {uri: "data:text/plain,hi"}
+      - {uri: "file:///etc/passwd"}
+  expect:
+    case_1: {error: acif.source_uri.scheme_forbidden}
+    case_2: {error: acif.source_uri.malformed}
+    case_3: {error: acif.source_uri.scheme_forbidden}
+    case_4: {error: acif.source_uri.scheme_forbidden}
+    case_5: {error: acif.source_uri.scheme_forbidden}
+
+- id: TV-URI-k
+  spec: "[ACIF-REGISTRY] §10.2"
+  harness: static
+  description: userinfo rejected
+  input: {uri: "https://user:pw@example.com/x"}
+  expect: {error: acif.source_uri.userinfo_present}
+
+- id: TV-URI-l
+  spec: "[ACIF-REGISTRY] §10.4"
+  harness: mock-transport
+  description: permanent redirect records the target
+  input:
+    request: "https://old.example.com/skill.md"
+    transport: [{status: 301, location: "https://new.example.com/skill.md"}, {status: 200}]
+  expect: {source_uri: "https://new.example.com/skill.md"}
+
+- id: TV-URI-l2
+  spec: "[ACIF-REGISTRY] §10.4"
+  harness: mock-transport
+  description: temporary redirect records the requested URL; signed query never persisted
+  input:
+    request: "https://cdn.example.com/skill.md"
+    transport: [{status: 302, location: "https://edge.example.com/skill.md?X-Sig=abc&Expires=60"}, {status: 200}]
+  expect: {source_uri: "https://cdn.example.com/skill.md"}
+
+- id: TV-URI-l3
+  spec: "[ACIF-REGISTRY] §10.4"
+  harness: mock-transport
+  description: 303 is temporary-class; records the requested URL
+  input:
+    request: "https://a.example.com/skill.md"
+    transport: [{status: 303, location: "https://b.example.com/skill.md"}, {status: 200}]
+  expect: {source_uri: "https://a.example.com/skill.md"}
+
+- id: TV-URI-m
+  spec: "[ACIF-REGISTRY] §10.4"
+  harness: mock-transport
+  description: any http hop is a downgrade
+  input:
+    request: "https://a.example.com/x"
+    transport: [{status: 301, location: "http://b.example.com/x"}]
+  expect: {error: acif.source_uri.redirect_downgrade}
+
+- id: TV-URI-m2
+  spec: "[ACIF-REGISTRY] §10.4"
+  harness: mock-transport
+  description: downgrade after the freeze point still rejects; the freeze governs recording only
+  input:
+    request: "https://a.example.com/x"
+    transport: [{status: 302, location: "https://b.example.com/x"}, {status: 301, location: "http://c.example.com/x"}]
+  expect:
+    error: acif.source_uri.redirect_downgrade
+
+- id: TV-URI-n
+  spec: "[ACIF-REGISTRY] §10.4"
+  harness: mock-transport
+  description: chain limit and loop
+  input:
+    cases:
+      - {request: "https://a.example.com/0", transport: eleven-hop-chain}
+      - {request: "https://a.example.com/loop", transport: two-node-301-loop}
+  expect:
+    error: acif.source_uri.redirect_limit
+
+- id: TV-URI-w
+  spec: "[ACIF-REGISTRY] §10.4"
+  harness: mock-transport
+  description: permanent redirect after a temporary hop never affects the record; the crawl-seed stays recorded
+  input:
+    request: "https://a.example.com/skill.md"
+    transport: [{status: 302, location: "https://edge.example.com/skill.md"}, {status: 301, location: "https://c.example.com/skill.md"}, {status: 200}]
+  expect: {source_uri: "https://a.example.com/skill.md"}
+
+- id: TV-URI-x
+  spec: "[ACIF-REGISTRY] §10.4"
+  harness: mock-transport
+  description: recorded value is the request URL of the first temporary redirect, not the crawl-seed
+  input:
+    request: "https://old.example.com/skill.md"
+    transport: [{status: 301, location: "https://new.example.com/skill.md"}, {status: 302, location: "https://edge.example.com/skill.md"}, {status: 200}]
+  expect: {source_uri: "https://new.example.com/skill.md"}
+
+- id: TV-URI-y
+  spec: "[ACIF-REGISTRY] §10.4"
+  harness: mock-transport
+  description: consecutive permanents fold to the final resolved URL; 308 is permanent-class
+  input:
+    request: "https://a.example.com/skill.md"
+    transport: [{status: 301, location: "https://b.example.com/skill.md"}, {status: 308, location: "https://c.example.com/skill.md"}, {status: 200}]
+  expect: {source_uri: "https://c.example.com/skill.md"}
+
+- id: TV-URI-z
+  spec: "[ACIF-REGISTRY] §10.4"
+  harness: mock-transport
+  description: permanent-temporary-permanent sandwich records the permanent-prefix endpoint
+  input:
+    request: "https://a.example.com/skill.md"
+    transport: [{status: 301, location: "https://b.example.com/skill.md"}, {status: 302, location: "https://edge.example.com/skill.md"}, {status: 301, location: "https://d.example.com/skill.md"}, {status: 200}]
+  expect: {source_uri: "https://b.example.com/skill.md"}
+
+- id: TV-URI-o
+  spec: "[ACIF-REGISTRY] §10.5"
+  harness: static
+  description: direct-file last segment feeds tier-2 fallback naming
+  input:
+    uri: "https://example.com/skills/my-skill.md"
+    body_classification: single-file
+  expect: {url_derived_name: "my-skill"}
+
+- id: TV-URI-o2
+  spec: "[ACIF-REGISTRY] §10.5"
+  harness: static
+  description: filename conflict — both recorded, diagnostic, never silent override
+  input:
+    uri: "https://example.com/skills/my-skill.md"
+    frontmatter_name: "totally-different"
+    body_classification: single-file
+  expect:
+    recorded: [my-skill, totally-different]
+    diagnostic: acif.source_uri.filename_conflict
+
+- id: TV-URI-p
+  spec: "[ACIF-REGISTRY] §10.5"
+  harness: static
+  description: single-file trailing slash rejects
+  input:
+    uri: "https://example.com/skills/my-skill.md/"
+    body_classification: single-file
+  expect: {error: acif.source_uri.direct_file_trailing_slash}
+
+- id: TV-URI-q
+  spec: "[ACIF-REGISTRY] §10.5"
+  harness: static
+  description: multi-file directory URL — trailing slash conformant, no filename semantics
+  input:
+    uri: "https://example.com/skills/my-skill/"
+    body_classification: multi-file
+  expect: {conformant: true, url_derived_name: none}
+
+- id: TV-URI-r
+  spec: "[ACIF-REGISTRY] §10.3"
+  harness: static
+  description: idempotency — normalize twice, byte-identical
+  input:
+    uris:
+      - "HTTPS://GitHub.IO:443/A%3ab/./x/../y#frag"
+      - "https://example.com/a%2Db"
+  expect: {normalize_normalize_equals_normalize: true}
+
+- id: TV-URI-s
+  spec: "[ACIF-REGISTRY] §10.1"
+  harness: static
+  description: hash exclusion — identical body, different source_uri, identical hashes
+  input:
+    body: {files: {SKILL.md: "Same bytes.\n"}}
+    records:
+      - {source_uri: "https://a.example.com/SKILL.md"}
+      - {source_uri: "https://mirror.example.org/SKILL.md"}
+  expect:
+    body_hash_identical: true
+    metadata_hash_identical: true
+
+- id: TV-URI-t
+  spec: "[ACIF-REGISTRY] §10.4"
+  harness: mock-crawl
+  description: re-crawl stability — same body via a temporary-redirect chain twice, byte-identical source_uri
+  input:
+    request: "https://cdn.example.com/skill.md"
+    crawls: 2
+    transport_each: [{status: 307, location: "https://edge-{random}.example.com/skill.md?sig={random}"}, {status: 200}]
+  expect: {source_uri_byte_identical_across_crawls: true}
+
+- id: TV-URI-u
+  spec: "[ACIF-REGISTRY] §10.6"
+  harness: static
+  description: conditional — source_status shape if emitted
+  input: {emitted_source_status: conditional}
+  expect:
+    if_emitted: {value_in: [live, moved, gone, unreachable]}
+
+- id: TV-URI-v
+  spec: "[ACIF-REGISTRY] §10.2, §12"
+  harness: static
+  description: emitted record with no source_uri rejects at record-emit
+  input:
+    record:
+      registry_section:
+        body_hash: {algorithm: sha256, value: "916e570331167c16f8112573d1b6020c134cc3d4019e8011693676d019b88ffe"}
+        fetched_at: "2026-07-11T00:00:00+00:00"
+  expect:
+    error: acif.source_uri.missing

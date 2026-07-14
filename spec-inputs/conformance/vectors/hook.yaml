@@ -1,0 +1,132 @@
+# ACIF conformance vectors — TV-HOOK-* ([ACIF-HOOK] Appendix C; capability model + vocabularies)
+# Normative. Hash values marked <computed> are filled by reference/generate_vectors.py.
+
+- id: TV-HOOK-a
+  spec: "[ACIF-HOOK] §10"
+  harness: static
+  description: empty or absent hook.requires is conformant
+  input:
+    variants:
+      - {hook: {event: session_start, handlers: [{type: command, scripts: [{type: inline, content: "#!/bin/sh\necho hi\n"}]}], requires: {}}}
+      - {hook: {event: session_start, handlers: [{type: command, scripts: [{type: inline, content: "#!/bin/sh\necho hi\n"}]}]}}
+  expect:
+    conformant: true
+
+- id: TV-HOOK-b
+  spec: "[ACIF-CORE] §9.4; [ACIF-HOOK] §10.3"
+  harness: static
+  description: orphan-key reject — a DERIVABLE hook key in requires
+  input:
+    hook:
+      event: session_start
+      handlers: [{type: command, scripts: [{type: inline, content: "#!/bin/sh\necho hi\n"}]}]
+      requires: {handler_types: ["command"]}
+  expect:
+    conformant: false
+    reason: acif.requires.orphan_key
+    reason_note: derivable-key-never-requires
+    params: {key: handler_types}
+
+- id: TV-HOOK-c
+  spec: "[ACIF-CORE] §9.5"
+  harness: static
+  description: unknown requires key → three-valued unknown
+  input:
+    consumer_recognizes: []
+    item_requires: {gpu_access: true}
+  expect:
+    evaluation: unknown
+    install: refuse-unless-operator-opt-in
+
+- id: TV-HOOK-d
+  spec: "[ACIF-HOOK] §10.1, §6.2"
+  harness: static
+  description: D_K handler_types — derivable-true on conforming record; empty handlers tests the reject, not derivable-false
+  input:
+    conforming:
+      hook: {event: session_start, handlers: [{type: command, scripts: [{type: inline, content: "#!/bin/sh\necho hi\n"}]}]}
+    empty_handlers:
+      hook: {event: session_start, handlers: []}
+  expect:
+    conforming: {handler_types: derivable-true}
+    empty_handlers: {error: acif.hook.handlers_missing}
+
+- id: TV-HOOK-e
+  spec: "[ACIF-HOOK] §10.1"
+  harness: static
+  description: D_K matcher_patterns
+  input:
+    with_matcher:
+      hook: {event: before_tool_execute, matcher: "file_write|file_edit", handlers: [{type: command, scripts: [{type: inline, content: "#!/bin/sh\nexit 0\n"}]}]}
+    without_matcher:
+      hook: {event: before_tool_execute, handlers: [{type: command, scripts: [{type: inline, content: "#!/bin/sh\nexit 0\n"}]}]}
+  expect:
+    with_matcher: {matcher_patterns: derivable-true}
+    without_matcher: {matcher_patterns: derivable-false}
+
+- id: TV-HOOK-f
+  spec: "[ACIF-HOOK] §10.1"
+  harness: static
+  description: D_K async_execution
+  input:
+    async_true:
+      hook: {event: session_start, handlers: [{type: command, async: true, scripts: [{type: inline, content: "#!/bin/sh\necho hi\n"}]}]}
+    async_absent:
+      hook: {event: session_start, handlers: [{type: command, scripts: [{type: inline, content: "#!/bin/sh\necho hi\n"}]}]}
+  expect:
+    async_true: {async_execution: derivable-true}
+    async_absent: {async_execution: derivable-false}
+
+- id: TV-HOOK-g
+  spec: "[ACIF-HOOK] §8.1, §9; [ACIF-HOOK] Appendix A"
+  harness: static
+  description: canonical event-name round-trip — provider-native names translate; body_hash post-translation; unrecognized rejects
+  input:
+    provider_native_variants:
+      - {event: "PreToolUse"}          # claude-code
+      - {event: "BeforeTool"}          # gemini-cli
+      - {event: "tool.execute.before"} # opencode
+    canonical: {event: "before_tool_execute"}
+    unrecognized: {event: "onToolStart"}
+    common_handlers: [{type: command, scripts: [{type: inline, content: "#!/bin/sh\nexit 0\n"}]}]
+  expect:
+    all_variants_canonicalize_to: before_tool_execute
+    body_hash_identical_across_variants: true
+    body_hash: "9c8ab2d7f2465728140264d725011daad97054aceaaedfa9dd0a03d68d06b629"
+    unrecognized: {error: acif.hook.event_unrecognized}
+
+- id: TV-HOOK-h
+  spec: "[ACIF-HOOK] §8.2; [ACIF-HOOK] Appendix B"
+  harness: static
+  description: canonical handler-type round-trip — absent type materializes to command; unrecognized rejects
+  input:
+    absent_type:
+      hook: {event: session_start, handlers: [{scripts: [{type: inline, content: "#!/bin/sh\necho hi\n"}]}]}
+    unrecognized_type:
+      hook: {event: session_start, handlers: [{type: webhook2}]}
+  expect:
+    absent_type: {canonical_handler_type: command, body_hash_equals_explicit_command_variant: true}
+    unrecognized_type: {error: acif.hook.handler_type_unrecognized}
+
+- id: TV-HOOK-i
+  spec: "[ACIF-HOOK] §9.2"
+  harness: static
+  description: missing referenced file at ingestion rejects
+  input:
+    hook: {event: session_start, handlers: [{type: command, scripts: [{type: file, path: "hooks/run.sh"}]}]}
+    files_present: []
+  expect:
+    error: acif.hook.script_file_missing
+
+- id: TV-HOOK-j
+  spec: "[ACIF-HOOK] §9.2"
+  harness: static
+  description: invalid referenced paths reject — absolute and traversing
+  input:
+    absolute:
+      hook: {event: session_start, handlers: [{type: command, scripts: [{type: file, path: "/etc/hooks/run.sh"}]}]}
+    traversal:
+      hook: {event: session_start, handlers: [{type: command, scripts: [{type: file, path: "../outside/run.sh"}]}]}
+  expect:
+    absolute: {error: acif.hook.script_path_invalid}
+    traversal: {error: acif.hook.script_path_invalid}

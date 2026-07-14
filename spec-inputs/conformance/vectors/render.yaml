@@ -1,0 +1,50 @@
+# ACIF conformance vectors — TV-RENDER-* ([ACIF-RENDER] Appendix A)
+# Normative. Framework-level vectors; per-type render vectors live in their L1 families.
+
+- id: TV-RENDER-a
+  spec: "[ACIF-RENDER] §6.2"
+  harness: static
+  description: determinism — one canonical form, one render context, byte-identical output across invocations and implementations
+  input:
+    canonical:
+      mcp: {servers: {demo: {type: stdio, command: "npx", args: ["-y", "@demo/mcp-server"]}}}
+    render_context: {target_provider: no-type-format}
+    invocations: 2
+  expect:
+    output_byte_identical: true
+
+- id: TV-RENDER-b
+  spec: "[ACIF-RENDER] §8; [ACIF-CORE] §8.5"
+  harness: static
+  description: structured-encoder generic — injection-shaped passthrough value encoded, never spliced
+  input:
+    canonical_passthrough_value: "pwsh\", \"payload\": {\"x"
+    render_targets: [json-format, yaml-format]
+  expect:
+    output_parses_in_target_format: true
+    value_round_trips_byte_identical: true
+    string_splice_detected: false
+
+- id: TV-RENDER-c
+  spec: "[ACIF-RENDER] §7"
+  harness: static
+  description: degradation-diagnostic pairing — degraded output without its paired diagnostic is non-conformant
+  input:
+    exercised_pairs:
+      - {path: hook-os-drop, diagnostic: acif.hook.platform_override_dropped}
+      - {path: rule-gate-loss, diagnostic: acif.rule.activation_degraded}
+      - {path: command-untranslated, diagnostic: acif.command.placeholder_untranslated}
+  expect:
+    output_without_paired_diagnostic: non-conformant
+
+- id: TV-RENDER-d
+  spec: "[ACIF-RENDER] §9"
+  harness: static
+  description: round-trip closure — differences confined to the published lossy set; body_hash unchanged when the set is empty
+  input:
+    cases:
+      - {type: mcp_config, target: no-type-format, lossy_set: []}
+      - {type: agent, target: collapsing-provider, lossy_set: [write-edit-distinction]}
+  expect:
+    case_1: {roundtrip_body_hash_identical: true}
+    case_2: {differences_within_lossy_set: true}

@@ -1,0 +1,193 @@
+# ACIF conformance vectors — TV-MCP-* ([ACIF-MCP] Appendix A)
+# Normative. Hash values marked <computed> are filled by reference/generate_vectors.py.
+
+- id: TV-MCP-a
+  spec: "[ACIF-MCP] §7, §8"
+  harness: static
+  description: transport default materialization, both branches, with reference body_hash
+  input:
+    source_stdio:
+      mcp:
+        servers:
+          demo: {command: "npx", args: ["-y", "@demo/mcp-server"]}
+    source_http:
+      mcp:
+        servers:
+          demo: {url: "https://mcp.example.com/sse-endpoint"}
+  expect:
+    canonical_stdio.servers.demo.type: stdio
+    canonical_http.servers.demo.type: streamable-http
+    body_hash_stdio: "26387bc7f0b779925f2d6e704f3dfe590fd381893aa301bc28d2ae399f5e3b52"
+    body_hash_http: "e55a9fc091b4e5267c4c07199ee60712de6c47a9846f929c5cf2d1d9da57f98a"
+
+- id: TV-MCP-b
+  spec: "[ACIF-MCP] §7"
+  harness: static
+  description: ambiguous transport rejects
+  input:
+    mcp:
+      servers:
+        demo: {command: "npx", url: "https://mcp.example.com/"}
+  expect:
+    error: acif.mcp.transport_default_ambiguous
+
+- id: TV-MCP-c
+  spec: "[ACIF-MCP] §7"
+  harness: static
+  description: undetermined transport rejects
+  input:
+    mcp:
+      servers:
+        demo: {env: {TOKEN: "${TOKEN}"}}
+  expect:
+    error: acif.mcp.transport_default_undetermined
+
+- id: TV-MCP-d
+  spec: "[ACIF-MCP] §7, §8.4"
+  harness: static
+  description: body_hash stability — explicit type and defaulted type canonicalize identically
+  input:
+    variant_explicit:
+      mcp: {servers: {demo: {type: stdio, command: "npx", args: ["-y", "@demo/mcp-server"]}}}
+    variant_defaulted:
+      mcp: {servers: {demo: {command: "npx", args: ["-y", "@demo/mcp-server"]}}}
+  expect:
+    canonical_bytes_identical: true
+    body_hash_identical: true
+    body_hash: "26387bc7f0b779925f2d6e704f3dfe590fd381893aa301bc28d2ae399f5e3b52"   # equals TV-MCP-a body_hash_stdio
+
+- id: TV-MCP-e
+  spec: "[ACIF-MCP] §9"
+  harness: static
+  description: empty or absent mcp.requires is conformant
+  input:
+    variants:
+      - {mcp: {servers: {demo: {type: stdio, command: "npx"}}, requires: {}}}
+      - {mcp: {servers: {demo: {type: stdio, command: "npx"}}}}
+  expect:
+    conformant: true
+
+- id: TV-MCP-f
+  spec: "[ACIF-CORE] §9.5"
+  harness: static
+  description: unknown requires key evaluates three-valued unknown
+  input:
+    consumer_recognizes: []
+    item_requires: {quantum_transport: true}
+  expect:
+    evaluation: unknown
+    install: refuse-unless-operator-opt-in
+
+- id: TV-MCP-g
+  spec: "[ACIF-CORE] §9.4; [ACIF-MCP] §9.4"
+  harness: static
+  description: orphan-key reject — a DERIVABLE key on an mcp_config, and the same key on a skill
+  input:
+    on_mcp_item: {requires: {transport_types: ["stdio"]}}
+    on_skill_item: {requires: {transport_types: ["stdio"]}}
+  expect:
+    on_mcp_item: {conformant: false, reason: acif.requires.orphan_key, reason_note: derivable-key-never-requires, params: {key: transport_types}}
+    on_skill_item: {conformant: false, reason: acif.requires.orphan_key, reason_note: foreign-type-key, params: {key: transport_types}}
+
+- id: TV-MCP-h
+  spec: "[ACIF-MCP] §6.2"
+  harness: static
+  description: invalid transport values reject — unknown member and case variant
+  input:
+    variants:
+      - {mcp: {servers: {demo: {type: websocket, url: "https://x.example/"}}}}
+      - {mcp: {servers: {demo: {type: Stdio, command: "npx"}}}}
+  expect:
+    error: acif.mcp.transport_type_invalid
+
+- id: TV-MCP-i
+  spec: "[ACIF-MCP] §6.2"
+  harness: static
+  description: absent and empty servers map reject
+  input:
+    variants:
+      - {mcp: {}}
+      - {mcp: {servers: {}}}
+  expect:
+    error: acif.mcp.servers_missing
+
+- id: TV-MCP-j
+  spec: "[ACIF-MCP] §9.1"
+  harness: static
+  description: D_K battery — oauth_support, env_var_expansion, tool_filtering, auto_approve
+  input:
+    rich:
+      mcp:
+        servers:
+          demo:
+            type: stdio
+            command: "npx"
+            env: {FIGMA_TOKEN: "${FIGMA_TOKEN}"}
+            oauth: {provider: "example"}
+            includeTools: ["export"]
+            autoApprove: ["export"]
+    bare:
+      mcp:
+        servers:
+          demo: {type: stdio, command: "npx"}
+  expect:
+    rich: {oauth_support: derivable-true, env_var_expansion: derivable-true, tool_filtering: derivable-true, auto_approve: derivable-true}
+    bare: {oauth_support: derivable-false, env_var_expansion: derivable-false, tool_filtering: derivable-false, auto_approve: derivable-false}
+
+- id: TV-MCP-k
+  spec: "[ACIF-MCP] §8.4"
+  harness: static
+  description: wiring-hash coverage — args edit, env flip, url re-point each move body_hash
+  input:
+    base:
+      mcp:
+        servers:
+          demo: {type: stdio, command: "npx", args: ["-y", "@demo/mcp-server"], env: {MODE: "safe"}}
+          remote: {type: streamable-http, url: "https://mcp.example.com/a"}
+    edits:
+      - {path: "servers.demo.args[1]", value: "@demo/mcp-server-evil"}
+      - {path: servers.demo.env.MODE, value: "unsafe"}
+      - {path: servers.remote.url, value: "https://mcp.evil.example/a"}
+  expect:
+    each_edit_moves_body_hash: true
+
+- id: TV-MCP-k2
+  spec: "[ACIF-MCP] §8.3"
+  harness: static
+  description: determinism — tool-filter array order and server-key order do not affect canonical bytes
+  input:
+    variant_a:
+      mcp:
+        servers:
+          alpha: {type: stdio, command: "a", includeTools: ["read", "export"]}
+          beta: {type: stdio, command: "b"}
+    variant_b:
+      mcp:
+        servers:
+          beta: {type: stdio, command: "b"}
+          alpha: {type: stdio, command: "a", includeTools: ["export", "read"]}
+  expect:
+    canonical_bytes_identical: true
+    body_hash_identical: true
+
+- id: TV-MCP-l
+  spec: "[ACIF-MCP] §10"
+  harness: static
+  description: strip-and-restore — render to a no-type target, re-canonicalize, identical hash
+  input:
+    canonical:
+      mcp: {servers: {demo: {type: stdio, command: "npx", args: ["-y", "@demo/mcp-server"]}}}
+    render_target: no-type-format
+  expect:
+    roundtrip_canonical_bytes_identical: true
+    roundtrip_body_hash_identical: true
+
+- id: TV-MCP-m
+  spec: "[ACIF-MCP] §6.2"
+  harness: static
+  description: unconventional server name — INFORMATIVE diagnostic, item accepted
+  input:
+    mcp: {servers: {"9figma": {type: stdio, command: "npx"}}}
+  expect:
+    accept: true
+    diagnostic: acif.mcp.server_name_unconventional

@@ -1,0 +1,151 @@
+# ACIF conformance vectors — TV-AGENT-* ([ACIF-AGENT] Appendix A)
+# Normative. Hash values marked <computed> are filled by reference/generate_vectors.py.
+
+- id: TV-AGENT-a
+  spec: "[ACIF-AGENT] §9"
+  harness: static
+  description: empty or absent agent.requires is conformant
+  input:
+    variants:
+      - {agent: {requires: {}}}
+      - {agent: {}}
+  expect:
+    conformant: true
+
+- id: TV-AGENT-b
+  spec: "[ACIF-CORE] §9.5"
+  harness: static
+  description: unknown requires key → three-valued unknown
+  input:
+    consumer_recognizes: []
+    item_requires: {handoff_chains: true}
+  expect:
+    evaluation: unknown
+    install: refuse-unless-operator-opt-in
+
+- id: TV-AGENT-c
+  spec: "[ACIF-CORE] §9.4; [ACIF-AGENT] §9.3"
+  harness: static
+  description: orphan-key reject — DERIVABLE agent key on an agent, and the same key on a rule
+  input:
+    on_agent: {agent: {requires: {tool_restrictions: true}}}
+    on_rule: {rule: {requires: {tool_restrictions: true}}}
+  expect:
+    on_agent: {conformant: false, reason: acif.requires.orphan_key, reason_note: derivable-key-never-requires, params: {key: tool_restrictions}}
+    on_rule: {conformant: false, reason: acif.requires.orphan_key, reason_note: foreign-type-key, params: {key: tool_restrictions}}
+
+- id: TV-AGENT-d
+  spec: "[ACIF-AGENT] §9.1"
+  harness: static
+  description: D_K tool_restrictions — allowlist, denylist-only, and empty cases (null treated as absent)
+  input:
+    cases:
+      - {agent: {tools: [file_read]}}
+      - {agent: {disallowed_tools: [shell]}}
+      - {agent: {}}
+      - {agent: {tools: null, disallowed_tools: null}}
+  expect:
+    case_1: derivable-true
+    case_2: derivable-true
+    case_3: derivable-false
+    case_4: derivable-false
+
+- id: TV-AGENT-e
+  spec: "[ACIF-AGENT] §9.1"
+  harness: static
+  description: D_K model_selection — strict emptiness
+  input:
+    cases:
+      - {agent: {model: "claude-sonnet-5"}}
+      - {agent: {}}
+      - {agent: {model: ""}}
+  expect:
+    case_1: derivable-true
+    case_2: derivable-false
+    case_3: derivable-false
+
+- id: TV-AGENT-f
+  spec: "[ACIF-AGENT] §9.1"
+  harness: static
+  description: D_K per_agent_mcp
+  input:
+    cases:
+      - {agent: {mcp_servers: ["figma"]}}
+      - {agent: {}}
+  expect:
+    case_1: derivable-true
+    case_2: derivable-false
+
+- id: TV-AGENT-g
+  spec: "[ACIF-AGENT] §9.1"
+  harness: static
+  description: D_K subagent_spawning — locks the canonical tool-name pin
+  input:
+    cases:
+      - {agent: {tools: [agent]}}
+      - {agent: {tools: [file_read, file_edit]}}
+  expect:
+    case_1: derivable-true
+    case_2: derivable-false
+
+- id: TV-AGENT-h
+  spec: "[ACIF-AGENT] §7, §8.2; [ACIF-CORE] Appendix A"
+  harness: static
+  description: tool-name canonicalization — provider spawn spellings converge; body_hash (prose) unaffected; declared spellings ride metadata_hash
+  input:
+    variants:
+      - {frontmatter_tools: ["Agent"]}
+      - {frontmatter_tools: ["task"]}
+      - {frontmatter_tools: ["spawn_agent"]}
+      - {frontmatter_tools: ["use_subagent"]}
+      - {frontmatter_tools: ["Task"]}        # legacy alias, case-insensitive
+    common_body: "You are a scout. Report findings only.\n"
+  expect:
+    canonical_tools_all_variants: [agent]
+    body_hash_identical_across_variants: true
+    metadata_hash_differs_across_variants: true   # declared spellings differ
+    render_back: provider-native-name-per-target
+
+- id: TV-AGENT-i
+  spec: "[ACIF-AGENT] §8.2; [ACIF-CORE] §7.8"
+  harness: static
+  description: hash boundary — model re-pin moves metadata_hash only; prompt edit moves body_hash only
+  input:
+    base:
+      files: {scout.md: "---\nmodel: model-a\n---\nYou are a scout.\n"}
+    edits:
+      - {frontmatter: {model: "model-b"}}
+      - {prose: "You are a reviewer.\n"}
+  expect:
+    edit_1: {metadata_hash_moves: true, body_hash_moves: false}
+    edit_2: {metadata_hash_moves: false, body_hash_moves: true}
+
+- id: TV-AGENT-j
+  spec: "[ACIF-AGENT] §10.2"
+  harness: static
+  description: name-declared resolution — resolved with target id; unresolved with diagnostic and install refusal
+  input:
+    agent: {mcp_servers: ["figma"]}
+    registry_states:
+      - {known_mcp_items_with_server: {"figma": "a1b2c3d4-58cc-4372-a567-0e02b2c3d479"}}
+      - {known_mcp_items_with_server: {}}
+  expect:
+    state_1:
+      cross_reference: {source_path: "agent.mcp_servers[0]", declared_name: figma, target_kind: mcp_config, resolution: resolved, target_id: "a1b2c3d4-58cc-4372-a567-0e02b2c3d479"}
+    state_2:
+      cross_reference: {resolution: unresolved}
+      diagnostic: acif.registry.reference_unresolved
+      diagnostic_names: {declared_name: figma}
+      install: refuse-unless-operator-opt-in
+
+- id: TV-AGENT-k
+  spec: "[ACIF-CORE] Appendix A.2"
+  harness: static
+  description: write/edit-collapse round-trip — canonical file_edit survives a collapsing provider; documented-lossy on file_write
+  input:
+    canonical: {agent: {tools: [file_edit, file_write]}}
+    roundtrip_provider: collapsing-provider   # native edit_file for both
+  expect:
+    roundtrip_tools: [file_edit, file_edit]
+    documented_lossy: write-edit-distinction
+    reverse_translation_prefers: file_edit

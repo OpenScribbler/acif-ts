@@ -1,0 +1,168 @@
+# ACIF conformance vectors — TV-COMMAND-* ([ACIF-COMMAND] Appendix B)
+# Normative. Hash values marked <computed> are filled by reference/generate_vectors.py.
+
+- id: TV-COMMAND-a
+  spec: "[ACIF-COMMAND] §7, §11, Appendix A.1"
+  harness: static
+  description: placeholder canonicalization — lossless mapping, post-rewrite hash, render targets, untranslated carry
+  input:
+    source_gemini:
+      files: {review.md: "Review PR {{args}} carefully.\n"}
+    source_canonical:
+      files: {review.md: "Review PR $ARGUMENTS carefully.\n"}
+    render_targets: [gemini-form, input-form, no-row-target]
+  expect:
+    canonical_body: "Review PR $ARGUMENTS carefully.\n"
+    body_hash_identical_across_sources: true
+    body_hash: "eb6f4eb9bc130773a45fb39b20e9ad8e8a05fdabc011d85eeaf47dec08fa5cea"
+    render_gemini: "Review PR {{args}} carefully.\n"
+    render_no_row: {carries: "$ARGUMENTS", diagnostic: acif.command.placeholder_untranslated}
+
+- id: TV-COMMAND-b
+  spec: "[ACIF-COMMAND] §7, Appendix A.1"
+  harness: static
+  description: lossy named collapse — two named variants converge to one canonical body and identical body_hash
+  input:
+    variant_1: {files: {cmd.md: "Open ${input:filename} now.\n"}}
+    variant_2: {files: {cmd.md: "Open ${input:message} now.\n"}}
+  expect:
+    canonical_body: "Open $ARGUMENTS now.\n"
+    body_hash_identical: true
+    body_hash: "200dd55e5537f6a8b7458781d1fb8e7e038b1f665a2ebe1eb1aea7aeea19a8ad"
+    diagnostic: acif.command.placeholder_named_arg_collapsed
+    render_back_identity: false   # documented-lossy
+
+- id: TV-COMMAND-c
+  spec: "[ACIF-COMMAND] Appendix A.2"
+  harness: static
+  description: token boundary rule
+  input:
+    cases:
+      - {body: "run $ARGUMENTS\n"}
+      - {body: "run $ARGUMENTS[0]\n"}
+      - {body: "run $ARGUMENTSFOO\n"}
+      - {body: "run $ARGUMENTS"}
+  expect:
+    case_1: recognized
+    case_2: recognized
+    case_3: not-recognized
+    case_4: recognized   # end-of-body boundary
+
+- id: TV-COMMAND-d
+  spec: "[ACIF-COMMAND] §7"
+  harness: static
+  description: fenced-code behavior — token inside a fence treated identically (non-markdown-aware)
+  input:
+    files:
+      cmd.md: "Use it like:\n```\nreview {{args}}\n```\n"
+  expect:
+    canonical_body: "Use it like:\n```\nreview $ARGUMENTS\n```\n"
+    advisory_scan_counts_fenced_token: true
+
+- id: TV-COMMAND-e
+  spec: "[ACIF-COMMAND] §7"
+  harness: static
+  description: no escape form — literal-intent $ARGUMENTS is still the placeholder
+  input:
+    files: {cmd.md: "The token $ARGUMENTS is special.\n"}
+  expect:
+    recognized_as_placeholder: true
+    no_escape_grammar: true
+
+- id: TV-COMMAND-f
+  spec: "[ACIF-COMMAND] Appendix A.3"
+  harness: static
+  description: positional forms documented-unrecognized — verbatim, no rewrite, no advisory signal
+  input:
+    files: {cmd.md: "git rebase --onto $1 $2 && echo ${@:3}\n"}
+  expect:
+    canonical_body_verbatim: true
+    advisory: {argument_substitution_token: {present: false}}
+    note: disclosed-false-negative
+
+- id: TV-COMMAND-g
+  spec: "[ACIF-COMMAND] Appendix A.4"
+  harness: static
+  description: injection directives out of scope — carried verbatim, not placeholders
+  input:
+    files: {cmd.md: "Context: !{git status} and @{docs/notes.md}\n"}
+  expect:
+    canonical_body_verbatim: true
+    not_recognized_as_placeholder: true
+
+- id: TV-COMMAND-h
+  spec: "[ACIF-COMMAND] §8.1, §8.2; [ACIF-CORE] §7.8"
+  harness: static
+  description: frontmatter stripped from body_hash; the same frontmatter change moves metadata_hash
+  input:
+    variant_1:
+      files: {cmd.md: "---\nmodel: model-a\nallowed_tools: [Read]\n---\nDo the task with $ARGUMENTS.\n"}
+    variant_2:
+      files: {cmd.md: "---\nmodel: model-b\nallowed_tools: [Read, Edit]\n---\nDo the task with $ARGUMENTS.\n"}
+  expect:
+    body_hash_identical: true
+    body_hash: "711eb812c3c9e2ee14ae51852e6fe951be85a0141ec514d97eb7d63249df89fa"
+    metadata_hash_differs: true
+
+- id: TV-COMMAND-i
+  spec: "[ACIF-COMMAND] §9"
+  harness: static
+  description: empty or absent command.requires is conformant
+  input:
+    variants:
+      - {command: {requires: {}}}
+      - {command: {}}
+  expect:
+    conformant: true
+
+- id: TV-COMMAND-j
+  spec: "[ACIF-COMMAND] §9.3"
+  harness: static
+  description: orphan-key reject — four distinct reasons, one outcome
+  input:
+    cases:
+      - {command: {requires: {argument_substitution: true}}}
+      - {command: {requires: {builtin_commands: true}}}
+      - {command: {requires: {handler_types: ["command"]}}}
+      - {command: {model: "model-a", requires: {disable_model_invocation: true}}}
+  expect:
+    case_1: {conformant: false, reason: acif.requires.orphan_key, reason_note: considered-and-disposed, params: {key: argument_substitution}}
+    case_2: {conformant: false, reason: acif.requires.orphan_key, reason_note: out-of-scope-key, params: {key: builtin_commands}}
+    case_3: {conformant: false, reason: acif.requires.orphan_key, reason_note: foreign-type-key, params: {key: handler_types}}
+    case_4: {conformant: false, reason: acif.requires.orphan_key, reason_note: latent-field-presence-does-not-soften, params: {key: disable_model_invocation}}
+
+- id: TV-COMMAND-k
+  spec: "[ACIF-CORE] §9.5"
+  harness: static
+  description: unknown requires key → three-valued unknown
+  input:
+    consumer_recognizes: []
+    item_requires: {sandbox: true}
+  expect:
+    evaluation: unknown
+    install: refuse-unless-operator-opt-in
+
+- id: TV-COMMAND-l
+  spec: "[ACIF-COMMAND] §10.3"
+  harness: static
+  description: conditional builtin-shadowing advisory — tests the diagnostic shape if emitted, not whether emitted
+  input:
+    command: {display_name: "/compact"}
+    registry_emits_advisory: conditional
+  expect:
+    if_emitted:
+      names_provider: true
+      names_colliding_name: "/compact"
+
+- id: TV-COMMAND-m
+  spec: "[ACIF-COMMAND] §10.1"
+  harness: static
+  description: advisory projection shape — method stamp required, no confidence score, no forms-set
+  input:
+    files: {cmd.md: "Review $ARGUMENTS.\n"}
+  expect:
+    advisory:
+      argument_substitution_token:
+        present: true
+        method: "substring-canonical-v1"
+    forbidden_fields: [confidence, forms]

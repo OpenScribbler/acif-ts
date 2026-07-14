@@ -1,0 +1,135 @@
+# ACIF conformance vectors — TV-FRESH-* ([ACIF-REGISTRY] §11, Appendix A)
+# Normative. Static vectors use an injected consumer clock T; one mock-crawl vector.
+
+- id: TV-FRESH-a
+  spec: "[ACIF-REGISTRY] §11.2–§11.4"
+  harness: static
+  description: sidecar past + attestation valid — stale, tier attested, default policy warns, no combined scalar
+  input:
+    record: {fetched_at: "2026-05-01T00:00:00Z", expires: "2026-05-04T00:00:00Z", attestation_hash: {algorithm: sha256, value: "ab12"}}
+    consumer_clock: "2026-05-10T00:00:00Z"
+    attestation_evaluation: valid
+  expect:
+    staleness: stale
+    trust_tier: attested
+    default_policy: warn-not-refuse
+    warning: {id: acif.registry.stale, params: {expires: "2026-05-04T00:00:00Z"}}
+    combined_scalar_present: false
+
+- id: TV-FRESH-b
+  spec: "[ACIF-REGISTRY] §11.3"
+  harness: static
+  description: sidecar fresh + attestation lapsed — fresh, tier unattested, staleness bit not set
+  input:
+    record: {fetched_at: "2026-05-09T00:00:00Z", attestation_hash: {algorithm: sha256, value: "ab12"}}
+    consumer_clock: "2026-05-10T00:00:00Z"
+    attestation_evaluation: lapsed
+  expect:
+    staleness: fresh
+    trust_tier: unattested
+
+- id: TV-FRESH-c
+  spec: "[ACIF-REGISTRY] §11.3"
+  harness: static
+  description: attestation manifest unreachable — response byte-identical to the reachable case
+  input:
+    record: {fetched_at: "2026-05-09T00:00:00Z", attestation_hash: {algorithm: sha256, value: "ab12"}}
+    attestation_system: [reachable, unreachable]
+  expect:
+    registry_response_byte_identical: true
+    trust_tier_when_unreachable: unattested
+    staleness_unaffected: true
+
+- id: TV-FRESH-d
+  spec: "[ACIF-REGISTRY] §11.2"
+  harness: static
+  description: default window — fetched_at + 72h
+  input:
+    record: {fetched_at: "2026-05-01T00:00:00Z"}
+    clocks:
+      - "2026-05-03T23:00:00Z"   # +71h
+      - "2026-05-04T01:00:00Z"   # +73h
+  expect:
+    clock_1: fresh
+    clock_2: stale
+
+- id: TV-FRESH-e
+  spec: "[ACIF-REGISTRY] §11.2"
+  harness: static
+  description: malformed window vs honestly-past expires
+  input:
+    malformed: {fetched_at: "2026-05-02T00:00:00Z", expires: "2026-05-01T00:00:00Z"}
+    past: {fetched_at: "2026-04-01T00:00:00Z", expires: "2026-04-04T00:00:00Z"}
+    consumer_clock: "2026-05-10T00:00:00Z"
+  expect:
+    malformed: {error: acif.registry.expires_before_fetched_at}
+    past: {conformant: true, staleness: stale}
+
+- id: TV-FRESH-f
+  spec: "[ACIF-REGISTRY] §11.2"
+  harness: static
+  description: offsetless timestamp in a freshness field is malformed
+  input:
+    record: {fetched_at: "2026-05-01T00:00:00"}
+  expect:
+    conformant: false
+    reason: acif.registry.timestamp_offset_missing
+    reason_note: rfc3339-explicit-offset-required
+
+- id: TV-FRESH-g
+  spec: "[ACIF-REGISTRY] §11.2"
+  harness: static
+  description: fail-closed skew — a borderline instant within declared tolerance evaluates stale
+  input:
+    record: {fetched_at: "2026-05-01T00:00:00Z", expires: "2026-05-04T00:00:00Z"}
+    declared_tolerance_seconds: 30
+    consumer_clock: "2026-05-03T23:59:45Z"
+  expect:
+    staleness: stale
+
+- id: TV-FRESH-h
+  spec: "[ACIF-REGISTRY] §11.4"
+  harness: static
+  description: lanes — warn + proceed by default; operator opt-in escalates to refuse
+  input:
+    record: {fetched_at: "2026-05-01T00:00:00Z"}
+    consumer_clock: "2026-05-10T00:00:00Z"
+    policies: [default, freshness-enforcement-opt-in]
+  expect:
+    default: {warning: {id: acif.registry.stale, params: {expires: "2026-05-04T00:00:00Z"}}, state_flag: stale, install: proceed}
+    opt_in: {install: refuse}
+
+- id: TV-FRESH-i
+  spec: "[ACIF-REGISTRY] §11.3"
+  harness: static
+  description: fresh-but-unattested is the normal state — no warning, no error
+  input:
+    record: {fetched_at: "2026-05-09T00:00:00Z"}
+    consumer_clock: "2026-05-10T00:00:00Z"
+  expect:
+    staleness: fresh
+    trust_tier: unattested
+    warnings: none
+
+- id: TV-FRESH-j
+  spec: "[ACIF-REGISTRY] §11.1, §11.3"
+  harness: mock-crawl
+  description: re-crawl advances the crawl axis while a lapsed attestation still degrades the tier
+  input:
+    crawl_1: {fetched_at: "2026-05-01T00:00:00Z", body_hash: unchanged}
+    crawl_2: {fetched_at: "2026-05-09T00:00:00Z", body_hash: unchanged}
+    consumer_clock: "2026-05-10T00:00:00Z"
+    attestation_evaluation: lapsed
+  expect:
+    staleness_after_crawl_2: fresh
+    trust_tier: unattested
+
+- id: TV-FRESH-k
+  spec: "[ACIF-REGISTRY] §11.1"
+  harness: static
+  description: third-clock conflation, tested behaviorally — the sidecar clock says stale while generated_at is ahead of the consumer clock, so any implementation computing staleness from generated_at reports fresh and fails
+  input:
+    record: {fetched_at: "2026-05-01T00:00:00Z", generated_at: "2026-05-11T00:00:00Z"}
+    consumer_clock: "2026-05-10T00:00:00Z"
+  expect:
+    staleness: stale

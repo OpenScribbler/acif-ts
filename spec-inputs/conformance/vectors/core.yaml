@@ -1,0 +1,327 @@
+# ACIF conformance vectors — record & pack layer (TV-1..TV-13, TV-L2-*, TV-L3-*)
+# Normative. Owning specs: [ACIF-PUBLISHER] Appendix A, [ACIF-REGISTRY] Appendix A (TV-L3),
+# [ACIF-CORE] §5–§7. Hash values marked <computed> are filled by reference/generate_vectors.py.
+
+- id: TV-1
+  spec: "[ACIF-PUBLISHER] Appendix A; [ACIF-CORE] §7"
+  harness: static
+  description: body_hash stability across pack context — same skill body bytes under three pack contexts
+  input:
+    body:
+      files:
+        SKILL.md: "---\ndescription: demo\n---\nUse this skill to demo hashing.\n"
+      entry_file: SKILL.md
+    contexts:
+      - {pack: none}
+      - {pack: "11111111-1111-4111-8111-111111111111"}
+      - {pack: "22222222-2222-4222-8222-222222222222"}
+  expect:
+    body_hash_identical_across_contexts: true
+    body_hash: "916e570331167c16f8112573d1b6020c134cc3d4019e8011693676d019b88ffe"
+
+- id: TV-2
+  spec: "[ACIF-PUBLISHER] §6 (PATH α)"
+  harness: static
+  description: metadata_hash invariance — same publisher_section, different inferred pack contexts
+  input:
+    publisher_section:
+      kind: skill
+      id: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+      display_name: "Demo Skill"
+    contexts:
+      - {inferred_pack_id: "33333333-3333-5333-8333-333333333333"}
+      - {inferred_pack_id: "44444444-4444-5444-8444-444444444444"}
+  expect:
+    metadata_hash_identical_across_contexts: true
+    metadata_hash: "b68bf2e4cbd6b9123d23de684498157adeaf4915e65435a95a556ac27ec50316"
+
+- id: TV-3
+  spec: "[ACIF-PUBLISHER] §9.4"
+  harness: static
+  description: inferred_pack_id determinism under the pinned namespace
+  input:
+    namespace: "93516344-00e5-419b-a230-6e8b1d02f87d"
+    canonical_repository_url: "https://github.com/obra/superpowers"
+    canonical_display_name: "superpowers"
+  expect:
+    inferred_pack_id: "d932cd6d-1c14-527d-b2e7-185c717b7a0d"
+
+- id: TV-4
+  spec: "[ACIF-PUBLISHER] §8.3"
+  harness: static
+  description: declared pack membership wins over inferred
+  input:
+    item:
+      publisher_section: {pack_id: "11111111-1111-4111-8111-111111111111"}
+      registry_section: {inferred_pack_id: "22222222-2222-5222-8222-222222222222"}
+  expect:
+    member_of: "11111111-1111-4111-8111-111111111111"
+    pack_resolution: declared
+
+- id: TV-5
+  spec: "[ACIF-PUBLISHER] §8.3"
+  harness: static
+  description: declared pack_id naming a nonexistent pack → unresolved; install refuses
+  input:
+    item:
+      publisher_section: {pack_id: "99999999-9999-4999-8999-999999999999"}
+    known_packs: []
+  expect:
+    pack_resolution: unresolved
+    install: refuse-unless-operator-opt-in
+
+- id: TV-6
+  spec: "[ACIF-CORE] §5.2; [ACIF-PUBLISHER] §5.4"
+  harness: static
+  description: forbidden version field on an item record is a conformance error
+  input:
+    item_record:
+      kind: skill
+      effective_version: "3.0.0"
+  expect:
+    conformant: false
+    reason: acif.envelope.forbidden_field
+    reason_note: forbidden-field effective_version
+    params: {field: effective_version}
+
+- id: TV-7
+  spec: "[ACIF-PUBLISHER] §5.5"
+  harness: static
+  description: literal item version preserved through pack context; no field reflects the pack version
+  input:
+    item: {publisher_section: {version: "2.0.0"}}
+    pack: {version: "5.1.0"}
+  expect:
+    publisher_section.version: "2.0.0"
+    no_item_field_equals: "5.1.0"
+
+- id: TV-8
+  spec: "[ACIF-PUBLISHER] §8.3"
+  harness: static
+  description: pack-less item is first-class
+  input:
+    item:
+      publisher_section: {kind: rule, id: "f47ac10b-58cc-4372-a567-0e02b2c3d479", display_name: "Demo"}
+      registry_section: {}
+  expect:
+    conformant: true
+    installable: true
+
+- id: TV-9
+  spec: "[ACIF-PUBLISHER] §6"
+  harness: static
+  description: canonical metadata_hash byte string — JCS(publisher_section) + LF
+  input:
+    publisher_section:
+      kind: command
+      id: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+      display_name: "Review PR"
+      version: "1.2.0"
+  expect:
+    canonical_bytes: '{"display_name":"Review PR","id":"f47ac10b-58cc-4372-a567-0e02b2c3d479","kind":"command","version":"1.2.0"}'   # the exact JCS serialization, before the trailing LF
+    metadata_hash: "ceb0cf9212c530e85444020aeb3cbae8865fdc16d91ee63fe6f5cb374d67b5c6"
+
+- id: TV-10
+  spec: "[ACIF-PUBLISHER] §8.1"
+  harness: static
+  description: pack rename preserves identity
+  input:
+    pack_before: {id: "11111111-1111-4111-8111-111111111111", display_name: "old-name"}
+    pack_after: {id: "11111111-1111-4111-8111-111111111111", display_name: "new-name"}
+    referencing_item: {publisher_section: {pack_id: "11111111-1111-4111-8111-111111111111"}}
+  expect:
+    id_unchanged: true
+    reference_resolves_after_rename: true
+
+- id: TV-11
+  spec: "[ACIF-CORE] §5.1"
+  harness: static
+  description: envelope field validation — non-enum kind, non-UUIDv4 id, non-SemVer version, non-SPDX license.spdx each reject
+  input:
+    cases:
+      - {kind: "Skill", id: "f47ac10b-58cc-4372-a567-0e02b2c3d479", display_name: "Demo"}
+      - {kind: skill, id: "not-a-uuid", display_name: "Demo"}
+      - {kind: skill, id: "f47ac10b-58cc-4372-a567-0e02b2c3d479", display_name: "Demo", version: "1.0"}
+      - {kind: skill, id: "f47ac10b-58cc-4372-a567-0e02b2c3d479", display_name: "Demo", license: {spdx: "MIT License"}}
+  expect:
+    case_1: {conformant: false, reason: acif.envelope.kind_invalid, reason_note: kind-not-in-closed-enum}
+    case_2: {conformant: false, reason: acif.envelope.id_invalid, reason_note: id-not-uuid-v4}
+    case_3: {conformant: false, reason: acif.envelope.version_invalid, reason_note: version-not-semver}
+    case_4: {conformant: false, reason: acif.envelope.license_spdx_invalid, reason_note: license-spdx-not-identifier}
+
+- id: TV-12
+  spec: "[ACIF-CORE] §7.5"
+  harness: static
+  description: root-only sidecar exclusion — root acif-sidecar.yaml never enters body_hash; a same-named subdirectory file always does
+  input:
+    base:
+      files: {SKILL.md: "Body prose.\n", sub/acif-sidecar.yaml: "kind: skill\n"}
+      entry_file: SKILL.md
+    with_root_sidecar:
+      files: {SKILL.md: "Body prose.\n", sub/acif-sidecar.yaml: "kind: skill\n", acif-sidecar.yaml: "kind: skill\n"}
+      entry_file: SKILL.md
+    subdir_sidecar_edited:
+      files: {SKILL.md: "Body prose.\n", sub/acif-sidecar.yaml: "kind: skill\nid: f47ac10b\n"}
+      entry_file: SKILL.md
+  expect:
+    base: {body_hash: "581e9b6b2dbd5a5947758f8ecdf67896c2a1225936ab5bd744a3973460b85169"}
+    with_root_sidecar: {body_hash_equals_base: true}
+    subdir_sidecar_edited: {body_hash: "b4e9079283b7852f98fc2a9f9719699a1c5e3b48101695f8f7567314d3a2eae4", body_hash_equals_base: false}
+
+- id: TV-13
+  spec: "[ACIF-CORE] §7.4, §8.7"
+  harness: static
+  description: body-boundary rejects — symlink, NFC path collision, empty body
+  input:
+    symlink:
+      files: {SKILL.md: "Prose.\n"}
+      symlinks: [{path: "scripts/link.sh", target: "/etc/passwd"}]
+    path_collision:
+      files_raw_paths: ["caf\u00E9.md", "cafe\u0301.md"]   # NFC and NFD spellings of one name
+    empty:
+      files: {LICENSE: "MIT\n", README.md: "readme\n"}
+  expect:
+    symlink: {error: acif.body.symlink}
+    path_collision: {error: acif.body.path_collision}
+    empty: {error: acif.body.empty}
+
+- id: TV-L2-a
+  spec: "[ACIF-PUBLISHER] §5.2"
+  harness: static
+  description: publisher_section presence follows declaration — crawled no-frontmatter skill has neither publisher_section nor metadata_hash
+  input:
+    variant_undeclared:
+      files: {SKILL.md: "Use this skill to demo presence.\n"}
+    variant_declared:
+      files: {SKILL.md: "---\ndisplay_name: Demo\n---\nUse this skill to demo presence.\n"}
+  expect:
+    variant_undeclared: {publisher_section: absent, metadata_hash: absent, publisher_declared: false}
+    variant_declared: {publisher_section: present, metadata_hash: present, publisher_declared: true}
+
+- id: TV-L2-b
+  spec: "[ACIF-PUBLISHER] §5.2; [ACIF-CORE] §7.8"
+  harness: static
+  description: sidecar-only envelope-only rule — authored hook sidecar yields envelope-only publisher_section; display-name edit moves metadata_hash, not body_hash
+  input:
+    authored_sidecar:
+      kind: hook
+      id: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+      display_name: "Guard Write"
+      pack_id: "11111111-1111-4111-8111-111111111111"
+      hook:
+        event: before_tool_execute
+        handlers:
+          - type: command
+            scripts: [{type: inline, content: "#!/bin/sh\nexit 0\n"}]
+    edit: {display_name: "Guard Write v2"}
+  expect:
+    publisher_section_fields: [kind, id, display_name, pack_id]
+    publisher_section_excludes: [hook]
+    metadata_hash_moves_on_edit: true
+    body_hash_moves_on_edit: false
+
+- id: TV-L2-c
+  spec: "[ACIF-PUBLISHER] §5.3"
+  harness: static
+  description: faithful observation — declared provider-native tool spelling appears as written in publisher_section; canonical form carries the translated name
+  input:
+    declared_frontmatter: {tools: ["Read", "Task"]}
+    kind: agent
+  expect:
+    publisher_section.agent.tools: ["Read", "Task"]
+    canonical.agent.tools: ["file_read", "agent"]
+    metadata_hash_over: declared-form
+
+- id: TV-L2-d
+  spec: "[ACIF-PUBLISHER] §7"
+  harness: static
+  description: frontmatter CI reconciliation matrix
+  input:
+    sidecar_value: {description: "Canonical description"}
+    cases:
+      - {source_frontmatter: {}, mode: default}
+      - {source_frontmatter: {description: "Canonical description"}, mode: default}
+      - {source_frontmatter: {description: "Divergent description"}, mode: default}
+      - {source_frontmatter: {description: "Divergent description"}, mode: overwrite}
+  expect:
+    case_1: {action: add-silently}
+    case_2: {action: leave-untouched}
+    case_3: {action: block, diagnostic: acif.publisher.frontmatter_conflict}
+    case_4: {action: overwrite, logged: acif.publisher.frontmatter_conflict}
+
+- id: TV-L2-e
+  spec: "[ACIF-PUBLISHER] §8.2"
+  harness: static
+  description: pack hashing — declared pack has metadata_hash; inferred pack record has neither publisher_section nor metadata_hash; no pack has body_hash
+  input:
+    declared_pack: {source_kind: declared}
+    inferred_pack: {source_kind: inferred}
+  expect:
+    declared_pack: {metadata_hash: present, body_hash: absent}
+    inferred_pack: {publisher_section: absent, metadata_hash: absent, body_hash: absent}
+
+- id: TV-L2-f
+  spec: "[ACIF-PUBLISHER] §9.1"
+  harness: static
+  description: pack-source conflict — precedence winner adopted; diagnostic names the conflicting sources and values
+  input:
+    manifests:
+      - {source: "package.json", name: "superpowers"}
+      - {source: "gemini-extension.json", name: "super-powers"}
+  expect:
+    canonical_source: "package.json"
+    canonical_display_name: "superpowers"
+    diagnostic:
+      id: acif.publisher.pack_source_conflict
+      names_sources: ["package.json", "gemini-extension.json"]
+      names_values: ["superpowers", "super-powers"]
+
+- id: TV-L3-a
+  spec: "[ACIF-REGISTRY] §7"
+  harness: static
+  description: tuple endpoint shape — metadata_hash member null exactly when publisher_section absent
+  input:
+    pack_members:
+      - {item_id: "aaaa...", publisher_section: present}
+      - {item_id: "bbbb...", publisher_section: absent}
+  expect:
+    tuple_fields: [item_id, body_hash, metadata_hash_if_present, version_if_declared]
+    member_1.metadata_hash: present
+    member_2.metadata_hash: null
+
+- id: TV-L3-b
+  spec: "[ACIF-REGISTRY] §8.5"
+  harness: static
+  description: install_scope_capabilities entry without a source provenance tag is non-conformant
+  input:
+    projection: {global: {supported: true}}
+  expect:
+    conformant: false
+    reason: acif.registry.provenance_tag_missing
+    reason_note: missing-provenance-tag
+
+- id: TV-L3-c
+  spec: "[ACIF-REGISTRY] §8.3"
+  harness: static
+  description: advisory entry without a method stamp is non-conformant
+  input:
+    advisory: {argument_substitution_token: {present: true}}
+  expect:
+    conformant: false
+    reason: acif.registry.method_stamp_missing
+    reason_note: missing-method-stamp
+
+- id: TV-L3-d
+  spec: "[ACIF-CORE] §10; [ACIF-REGISTRY] §9"
+  harness: static
+  description: revoked-reference refusal — install refuses an item carrying a revoked cross-reference absent operator opt-in
+  input:
+    item:
+      cross_references:
+        - source_path: "agent.mcp_servers[0]"
+          declared_name: "figma"
+          target_kind: mcp_config
+          resolution: revoked
+          diagnostic: "target a1b2c3d4-... revoked by its registry"
+  expect:
+    install: refuse-unless-operator-opt-in

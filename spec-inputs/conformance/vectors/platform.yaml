@@ -1,0 +1,345 @@
+# ACIF conformance vectors — TV-PLATFORM-* ([ACIF-HOOK] Appendix C; [ACIF-HOOK] §7, §9, §11–§13)
+# Type-general per-OS script machinery, instantiated on hooks in 0.1.
+# Normative. Hash values marked <computed> are filled by reference/generate_vectors.py.
+# Common fixture: a hook block "kind: hook" with event before_tool_execute unless stated.
+
+- id: TV-PLATFORM-a
+  spec: "[ACIF-HOOK] §7.1, §7.3"
+  harness: static
+  description: absence = unconstrained — os-absent entry is selected on every enum member when no constrained match
+  input:
+    scripts: [{type: file, path: hooks/run.sh}]
+    targets: [darwin, linux, windows]
+  expect:
+    selection: {darwin: hooks/run.sh, linux: hooks/run.sh, windows: hooks/run.sh}
+
+- id: TV-PLATFORM-b
+  spec: "[ACIF-HOOK] §7.3"
+  harness: static
+  description: constrained-beats-default
+  input:
+    scripts:
+      - {type: file, path: hooks/run.sh}
+      - {type: file, path: hooks/run.cmd, os: [windows]}
+    targets: [windows, linux]
+  expect:
+    selection: {windows: hooks/run.cmd, linux: hooks/run.sh}
+
+- id: TV-PLATFORM-c
+  spec: "[ACIF-HOOK] §7.1"
+  harness: static
+  description: empty os / arch lists reject
+  input:
+    variants:
+      - {scripts: [{type: file, path: hooks/run.sh, os: []}]}
+      - {scripts: [{type: file, path: hooks/run.sh, arch: []}]}
+  expect:
+    variant_1: {error: acif.hook.script_os_empty}
+    variant_2: {error: acif.hook.script_arch_empty}
+
+- id: TV-PLATFORM-d
+  spec: "[ACIF-HOOK] §7.1"
+  harness: static
+  description: invalid os values reject — non-member and case variant
+  input:
+    variants:
+      - {scripts: [{type: file, path: hooks/run.sh, os: [linux, freebsd]}]}
+      - {scripts: [{type: file, path: hooks/run.sh, os: [Linux]}]}
+  expect:
+    error: acif.hook.script_os_invalid
+
+- id: TV-PLATFORM-e
+  spec: "[ACIF-HOOK] §7.2"
+  harness: static
+  description: two default entries reject
+  input:
+    scripts:
+      - {type: file, path: hooks/run.sh}
+      - {type: file, path: hooks/run.ps1}
+  expect:
+    error: acif.hook.script_default_ambiguous
+
+- id: TV-PLATFORM-f
+  spec: "[ACIF-HOOK] §7.2"
+  harness: static
+  description: constrained overlap rejects, diagnostic names the colliding OS and entry indices
+  input:
+    scripts:
+      - {type: file, path: hooks/unix.sh, os: [darwin, linux]}
+      - {type: file, path: hooks/lin.sh, os: [linux]}
+  expect:
+    error: acif.hook.script_platform_ambiguous
+    diagnostic_names: {os: linux, entries: [0, 1]}
+
+- id: TV-PLATFORM-g
+  spec: "[ACIF-HOOK] §7.2"
+  harness: static
+  description: disjoint constrained set passes
+  input:
+    scripts:
+      - {type: file, path: hooks/unix.sh, os: [darwin, linux]}
+      - {type: file, path: hooks/win.cmd, os: [windows]}
+  expect:
+    accept: true
+
+- id: TV-PLATFORM-g2
+  spec: "[ACIF-HOOK] §7.2, §15"
+  harness: static
+  description: decoy accept — benign default plus malicious-shaped windows override is well-formed (selection determinism is not divergence safety)
+  input:
+    scripts:
+      - {type: file, path: hooks/benign.sh}
+      - {type: file, path: hooks/other.cmd, os: [windows]}
+  expect:
+    accept: true
+    os_divergent: true
+
+- id: TV-PLATFORM-h
+  spec: "[ACIF-HOOK] §7.3"
+  harness: static
+  description: no match, no default — defined no-op plus mandatory report
+  input:
+    scripts: [{type: file, path: hooks/unix.sh, os: [darwin, linux]}]
+    targets: [windows]
+  expect:
+    selection: {windows: none}
+    diagnostic: acif.hook.script_no_platform_match
+
+- id: TV-PLATFORM-i
+  spec: "[ACIF-HOOK] §7.4, §9"
+  harness: static
+  description: per-OS key map canonicalization — three singleton constrained entries plus default, disjoint by construction; body_hash post-mapping
+  input:
+    source_mechanism: per-os-key-map
+    source:
+      command: "hooks/base.sh"
+      windows: "hooks/win.cmd"
+      linux: "hooks/lin.sh"
+      osx: "hooks/mac.sh"
+    referenced_files:
+      hooks/base.sh: "#!/bin/sh\necho base\n"
+      hooks/win.cmd: "@echo off\r\necho win\r\n"
+      hooks/lin.sh: "#!/bin/sh\necho lin\n"
+      hooks/mac.sh: "#!/bin/sh\necho mac\n"
+  expect:
+    canonical_scripts:   # canonical order — sorted by each entry's JCS bytes ([ACIF-HOOK] §9.3)
+      - {type: file, path: hooks/mac.sh, os: [darwin]}
+      - {type: file, path: hooks/lin.sh, os: [linux]}
+      - {type: file, path: hooks/win.cmd, os: [windows]}
+      - {type: file, path: hooks/base.sh}
+    provenance: declared
+    body_hash: "11f1e91480d2fdfd247311cc52240bf0fb2293febeccaeeadafacd74707cb32d"
+
+- id: TV-PLATFORM-i2
+  spec: "[ACIF-HOOK] §7.4, §9"
+  harness: static
+  description: per-OS key map with duplicate executable identity — §7.4 identity-merge to one constrained entry with sorted os union; body_hash pinned on the merged form
+  input:
+    source_mechanism: per-os-key-map
+    source:
+      command: "hooks/base.sh"
+      windows: "hooks/win.cmd"
+      linux: "hooks/unix.sh"
+      osx: "hooks/unix.sh"
+    referenced_files:
+      hooks/base.sh: "#!/bin/sh\necho base\n"
+      hooks/win.cmd: "@echo off\r\necho win\r\n"
+      hooks/unix.sh: "#!/bin/sh\necho unix\n"
+  expect:
+    canonical_scripts:   # canonical order — sorted by each entry's JCS bytes ([ACIF-HOOK] §9.3)
+      - {type: file, path: hooks/unix.sh, os: [darwin, linux]}
+      - {type: file, path: hooks/win.cmd, os: [windows]}
+      - {type: file, path: hooks/base.sh}
+    provenance: declared
+    body_hash: "9cbd1f0d7f47b8175ece2d43150b8df92c0f5c50b4cacf537ac6372313e8aeb3"
+
+- id: TV-PLATFORM-j
+  spec: "[ACIF-HOOK] §7.1, §7.4"
+  harness: static
+  description: osx alias never survives into canonical form
+  input:
+    source: {osx: "hooks/mac.sh"}
+  expect:
+    canonical_contains_os_value: darwin
+    canonical_never_contains: osx
+
+- id: TV-PLATFORM-k
+  spec: "[ACIF-HOOK] §7.4, §7.5"
+  harness: static
+  description: dual shell-field collapse — bash/powershell mint OS tags with mandatory diagnostic and inferred provenance
+  input:
+    source_mechanism: dual-shell-fields
+    source: {bash: "hooks/run.sh", powershell: "hooks/run.ps1"}
+  expect:
+    canonical_scripts:
+      - {type: file, path: hooks/run.sh, os: [darwin, linux]}
+      - {type: file, path: hooks/run.ps1, os: [windows]}
+    diagnostic: acif.hook.platform_shell_os_proxy
+    provenance: inferred-from-convention
+
+- id: TV-PLATFORM-l
+  spec: "[ACIF-HOOK] §7.4"
+  harness: static
+  description: filename-extension convention table, including the uninferable fallback and the disclosed false mapping
+  input:
+    cases:
+      - {file: hooks/a.ps1}
+      - {file: hooks/b.cmd}
+      - {file: hooks/c.bat}
+      - {file: hooks/d.sh}
+      - {file: hooks/pwsh-shebang}   # extensionless, first line "#!/usr/bin/env pwsh"
+      - {file: hooks/e.xyz}
+  expect:
+    case_1: {os: [windows], diagnostic: acif.hook.platform_filename_inferred}
+    case_2: {os: [windows], diagnostic: acif.hook.platform_filename_inferred}
+    case_3: {os: [windows], diagnostic: acif.hook.platform_filename_inferred}
+    case_4: {os: [darwin, linux], diagnostic: acif.hook.platform_filename_inferred}
+    case_5: {os: [darwin, linux], note: disclosed-false-mapping}
+    case_6: {os: absent, diagnostic: acif.hook.platform_filename_uninferable}
+    provenance: inferred-from-convention
+
+- id: TV-PLATFORM-m
+  spec: "[ACIF-HOOK] §7.4, §12.3"
+  harness: static
+  description: interpreter-selection flag excluded from OS mapping; injection-shaped passthrough value structured-encoded at render
+  input:
+    source: {command: "hooks/run", shell: "pwsh\", \"rm -rf /tmp\""}
+  expect:
+    canonical_scripts: [{type: file, path: hooks/run}]
+    no_os_synthesized: true
+    passthrough_carried: shell
+    render_back: structured-encoded-never-spliced
+
+- id: TV-PLATFORM-n
+  spec: "[ACIF-HOOK] §7.4"
+  harness: static
+  description: unmapped per-OS mechanism rejects (totality net)
+  input:
+    source_mechanism: unknown-per-os-table
+    source: {platforms: {win32: "hooks/w.cmd"}}
+  expect:
+    error: acif.hook.platform_unmappable
+
+- id: TV-PLATFORM-o
+  spec: "[ACIF-HOOK] §12.1"
+  harness: static
+  description: degraded render to no-mechanism provider — default emitted, constrained dropped, mandatory diagnostic
+  input:
+    canonical_scripts:
+      - {type: file, path: hooks/run.sh}
+      - {type: file, path: hooks/run.cmd, os: [windows]}
+    render_target: no-mechanism-provider
+  expect:
+    emitted: hooks/run.sh
+    dropped: [hooks/run.cmd]
+    diagnostic: acif.hook.platform_override_dropped
+
+- id: TV-PLATFORM-p
+  spec: "[ACIF-HOOK] §12.2"
+  harness: static
+  description: no-default render — selected-entry emit with declared target OS; refuse without one or when selection is empty
+  input:
+    canonical_scripts:
+      - {type: file, path: hooks/unix.sh, os: [darwin, linux]}
+    cases:
+      - {render_target: no-mechanism-provider, target_os: linux}
+      - {render_target: no-mechanism-provider}
+      - {render_target: no-mechanism-provider, target_os: windows}
+  expect:
+    case_1: {emitted: hooks/unix.sh}
+    case_2: {error: acif.hook.no_default_for_degraded_render}
+    case_3: {error: acif.hook.no_default_for_degraded_render}
+
+- id: TV-PLATFORM-q
+  spec: "[ACIF-HOOK] §9"
+  harness: static
+  description: hash coverage — flipping one os tag with script bytes unchanged moves body_hash; flipping an interpreter-selection passthrough likewise
+  input:
+    base:
+      hook:
+        event: before_tool_execute
+        handlers:
+          - type: command
+            scripts:
+              - {type: file, path: hooks/run.sh, os: [linux]}
+    referenced_files:
+      hooks/run.sh: "#!/bin/sh\necho ok\n"
+    edits:
+      - {path: "handlers[0].scripts[0].os", value: [windows]}
+      - {add_passthrough: {shell: powershell}}
+  expect:
+    each_edit_moves_body_hash: true
+    body_hash_base: "194225ce5a7ec641253e47b6abd7f07b22fdf8ac4845cba159bef8ffe7f8783f"
+    body_hash_os_flipped: "f5c964cdeddb304e801431f21c2c6c29f0e1e51cf99c63af78d2be58057c7dfc"
+
+- id: TV-PLATFORM-q2
+  spec: "[ACIF-HOOK] §7.1, §9.3"
+  harness: static
+  description: determinism — os tag order, scripts entry order, and inline CRLF line endings do not affect canonical bytes or body_hash
+  input:
+    variant_a:
+      hook:
+        event: before_tool_execute
+        handlers:
+          - type: command
+            scripts:
+              - {type: inline, content: "#!/bin/sh\necho hi\n", os: [darwin, linux]}
+              - {type: file, path: hooks/win.cmd, os: [windows]}
+    variant_b:
+      hook:
+        event: before_tool_execute
+        handlers:
+          - type: command
+            scripts:
+              - {type: file, path: hooks/win.cmd, os: [windows]}
+              - {type: inline, content: "#!/bin/sh\r\necho hi\r\n", os: [linux, darwin]}
+    referenced_files:
+      hooks/win.cmd: "@echo off\r\necho hi\r\n"
+  expect:
+    canonical_bytes_identical: true
+    body_hash_identical: true
+    body_hash: "bdee51e032051d9fc88d39f9196e47b4742d51fe4673cb020ba82c47903bee3a"
+
+- id: TV-PLATFORM-r
+  spec: "[ACIF-HOOK] §12.3"
+  harness: static
+  description: round-trip identity modulo documented-lossy cases; dead default preserved
+  input:
+    canonical_scripts:                                         # §9.3 canonical order: os-bearing entries serialize {"os":… and sort before {"path":…
+      - {type: file, path: hooks/unix.sh, os: [darwin, linux]}
+      - {type: file, path: hooks/win.cmd, os: [windows]}
+      - {type: file, path: hooks/base.sh}                      # dead default: full coverage above
+    render_target: per-os-key-map-provider
+  expect:
+    roundtrip_identity: true
+    dead_default_preserved: true
+
+- id: TV-PLATFORM-s
+  spec: "[ACIF-HOOK] §13.1"
+  harness: static
+  description: os_coverage projection — portable-tagged vs per-OS-divergent, identical os sets, divergence boolean differs
+  input:
+    portable:
+      scripts: [{type: file, path: hooks/run.sh, os: [darwin, linux, windows]}]
+    divergent:
+      scripts:
+        - {type: file, path: hooks/mac.sh, os: [darwin]}
+        - {type: file, path: hooks/lin.sh, os: [linux]}
+        - {type: file, path: hooks/win.cmd, os: [windows]}
+  expect:
+    portable: {os: [darwin, linux, windows], os_divergent: false}
+    divergent: {os: [darwin, linux, windows], os_divergent: true}
+
+- id: TV-PLATFORM-t
+  spec: "[ACIF-HOOK] §11"
+  harness: static
+  description: install coverage-gap — blocking true refuses on uncovered segment; blocking false warns and proceeds as defined no-op
+  input:
+    scripts: [{type: file, path: hooks/unix.sh, os: [darwin, linux]}]
+    install_target_os: windows
+    cases:
+      - {blocking: true}
+      - {blocking: false}
+  expect:
+    case_1: {install: refuse-unless-operator-opt-in}
+    case_2: {install: proceed, diagnostic: acif.hook.script_no_platform_match}

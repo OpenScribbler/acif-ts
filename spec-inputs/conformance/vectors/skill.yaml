@@ -1,0 +1,191 @@
+# ACIF conformance vectors — TV-SKILL-* ([ACIF-SKILL] Appendix B)
+# Normative. Hash values marked <computed> are filled by reference/generate_vectors.py.
+
+- id: TV-SKILL-a
+  spec: "[ACIF-SKILL] §10"
+  harness: static
+  description: empty or absent skill.requires is conformant
+  input:
+    variants:
+      - {skill: {activation: {type: auto, user_invocable: true}, requires: {}}}
+      - {skill: {activation: {type: auto, user_invocable: true}}}
+  expect:
+    conformant: true
+
+- id: TV-SKILL-b
+  spec: "[ACIF-CORE] §9.4; [ACIF-SKILL] §10.3"
+  harness: static
+  description: orphan-key reject — foreign-type key AND latent-field-matching key; latent presence does not soften
+  input:
+    foreign: {skill: {requires: {handler_types: ["command"]}}}
+    latent_match: {skill: {requires: {tool_restrictions: true}}, frontmatter_passthrough: {allowed_tools: [Read]}}
+  expect:
+    foreign: {conformant: false, reason: acif.requires.orphan_key, reason_note: foreign-type-key, params: {key: handler_types}}
+    latent_match: {conformant: false, reason: acif.requires.orphan_key, reason_note: latent-field-presence-does-not-soften, params: {key: tool_restrictions}}
+
+- id: TV-SKILL-c
+  spec: "[ACIF-CORE] §9.5"
+  harness: static
+  description: unknown requires key → three-valued unknown
+  input:
+    consumer_recognizes: []
+    item_requires: {python_version: ">=3.10"}
+  expect:
+    evaluation: unknown
+    install: refuse-unless-operator-opt-in
+
+- id: TV-SKILL-d
+  spec: "[ACIF-SKILL] §10.1"
+  harness: static
+  description: D_K auto_invocable across the activation states
+  input:
+    cases:
+      - {activation: absent}
+      - {activation: {type: auto}}
+      - {activation: {type: manual}}
+      - {activation: {type: hook}}
+  expect:
+    case_1: derivable-true    # materialized auto
+    case_2: derivable-true
+    case_3: derivable-false
+    case_4: derivable-false
+
+- id: TV-SKILL-e
+  spec: "[ACIF-SKILL] §10.1"
+  harness: static
+  description: D_K disable_model_invocation across the activation states
+  input:
+    cases:
+      - {activation: absent}
+      - {activation: {type: auto}}
+      - {activation: {type: manual}}
+      - {activation: {type: hook}}
+  expect:
+    case_1: derivable-false
+    case_2: derivable-false
+    case_3: derivable-true
+    case_4: derivable-true
+
+- id: TV-SKILL-f
+  spec: "[ACIF-SKILL] §10.1"
+  harness: static
+  description: D_K user_invocable — resolves-to-false semantics
+  input:
+    cases:
+      - {activation: {type: auto}}                          # user_invocable absent → materialized true
+      - {activation: {type: auto, user_invocable: true}}
+      - {activation: {type: auto, user_invocable: false}}
+  expect:
+    case_1: derivable-false
+    case_2: derivable-false
+    case_3: derivable-true
+
+- id: TV-SKILL-g
+  spec: "[ACIF-SKILL] §10.1; [ACIF-CORE] §7.2"
+  harness: static
+  description: D_K skill_bundled_resources — classification battery with exclusion list
+  input:
+    cases:
+      - files: {SKILL.md: "Use this to demo classification.\n"}
+      - files: {SKILL.md: "Use this to demo classification.\n", LICENSE: "MIT\n", README.md: "readme\n"}
+      - files: {SKILL.md: "Use this to demo classification.\n", scripts/run.sh: "#!/bin/sh\necho hi\n"}
+  expect:
+    case_1: {classification: single-file, skill_bundled_resources: derivable-false, body_hash: "12d3cb2f53305b53fff6ca4ff1166fd1d063b1319642e0a0906a5539c8fa57b7"}
+    case_2: {classification: single-file, skill_bundled_resources: derivable-false, body_hash_equals_case_1: true}
+    case_3: {classification: multi-file, skill_bundled_resources: derivable-true, body_hash: "fef9a3e615ab4d41c1a990908bf9a3e5b47f70a73eaa16fc7e1578c9f4ab60df"}
+
+- id: TV-SKILL-h
+  spec: "[ACIF-SKILL] §7, §8.3"
+  harness: static
+  description: activation-default materialization — canonical form carries the defaults; neither hash moves
+  input:
+    source:
+      files: {SKILL.md: "---\ndisplay_name: Demo\n---\nUse this to demo materialization.\n"}
+      declared_activation: absent
+  expect:
+    canonical.skill.activation: {type: auto, user_invocable: true}
+    body_hash_unaffected_by_materialization: true
+    metadata_hash_unaffected_by_materialization: true
+
+- id: TV-SKILL-i
+  spec: "[ACIF-CORE] §7.2"
+  harness: static
+  description: body classification (general) — exclusion-only directory is single-file; content sibling is multi-file
+  input:
+    cases:
+      - files: {SKILL.md: "Prose.\n", LICENSE: "MIT\n", README: "readme\n"}
+      - files: {SKILL.md: "Prose.\n", checklist.md: "- step\n"}
+  expect:
+    case_1: single-file
+    case_2: multi-file
+
+- id: TV-SKILL-j
+  spec: "[ACIF-SKILL] §6.3, §13.2"
+  harness: static
+  description: hook-activated cross-reference — resolution plus reciprocal skill-side entry
+  input:
+    skill:
+      activation: {type: hook, hook_ref: {id: "f47ac10b-58cc-4372-a567-0e02b2c3d479"}}
+    registry_state:
+      known_hooks: ["f47ac10b-58cc-4372-a567-0e02b2c3d479"]
+  expect:
+    cross_reference:
+      source_path: "skill.activation.hook_ref"
+      target_kind: hook
+      resolution: resolved
+    reciprocal_entry_emitted: true
+
+- id: TV-SKILL-k
+  spec: "[ACIF-SKILL] §8.3; [ACIF-CORE] §7.8"
+  harness: static
+  description: hash boundary — declared activation flip moves metadata_hash only; bundled-resource edit moves body_hash only
+  input:
+    base:
+      files: {SKILL.md: "---\nactivation:\n  type: auto\n  user_invocable: true\n---\nProse.\n", scripts/run.sh: "#!/bin/sh\necho v1\n"}
+    edits:
+      - {frontmatter: {activation: {user_invocable: false}}}
+      - {file: scripts/run.sh, content: "#!/bin/sh\necho v2\n"}
+  expect:
+    edit_1: {metadata_hash_moves: true, body_hash_moves: false}
+    edit_2: {metadata_hash_moves: false, body_hash_moves: true}
+
+- id: TV-SKILL-l
+  spec: "[ACIF-SKILL] §6.2, §14"
+  harness: static
+  description: activation rejects — missing type, case-variant type, hook_ref under wrong type, hook_ref without id
+  input:
+    cases:
+      - {activation: {user_invocable: true}}
+      - {activation: {type: Auto}}
+      - {activation: {type: auto, hook_ref: {id: "f47ac10b-58cc-4372-a567-0e02b2c3d479"}}}
+      - {activation: {type: hook, hook_ref: {name: "activator"}}}
+  expect:
+    case_1: {error: acif.skill.activation_type_missing}
+    case_2: {error: acif.skill.activation_type_invalid}
+    case_3: {error: acif.skill.hook_ref_forbidden}
+    case_4: {error: acif.skill.hook_ref_id_missing}
+
+- id: TV-SKILL-m
+  spec: "[ACIF-SKILL] §6.3"
+  harness: static
+  description: type hook without hook_ref is accepted
+  input:
+    skill: {activation: {type: hook, user_invocable: true}}
+  expect:
+    accept: true
+
+- id: TV-SKILL-n
+  spec: "[ACIF-CORE] §7.3, §7.4; [ACIF-SKILL] §8.2"
+  harness: static
+  description: multi-file entry-file frontmatter strip — frontmatter never enters body_hash, in either classification
+  input:
+    variant_1:
+      files: {SKILL.md: "---\ndescription: one\n---\nProse body.\n", scripts/run.sh: "#!/bin/sh\necho hi\n"}
+      entry_file: SKILL.md
+    variant_2:
+      files: {SKILL.md: "---\ndescription: two\n---\nProse body.\n", scripts/run.sh: "#!/bin/sh\necho hi\n"}
+      entry_file: SKILL.md
+  expect:
+    classification: multi-file
+    body_hash_identical_across_variants: true
+    body_hash: "b08c2af8a9d5c2eced158b49a13bacfe3d0a22221b965bd2a46672bc5b8f9648"

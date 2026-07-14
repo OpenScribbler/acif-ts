@@ -1,0 +1,175 @@
+# ACIF conformance vectors — TV-RULE-* ([ACIF-RULE] Appendix B)
+# Normative. Hash values marked <computed> are filled by reference/generate_vectors.py.
+
+- id: TV-RULE-a
+  spec: "[ACIF-RULE] §7; [ACIF-CORE] §7.8"
+  harness: static
+  description: activation-default materialization — canonical mode always; neither hash affected
+  input:
+    source:
+      files: {conventions.md: "Prefer functional patterns.\n"}
+      declared_activation: absent
+  expect:
+    canonical.rule.activation.mode: always
+    body_hash_unaffected_by_materialization: true
+    metadata_hash_unaffected_by_materialization: true
+    body_hash: "3870d9fb5e9cff74b36ffd20141fd693c8500ff5e97469f4b2d41775c242feaf"
+
+- id: TV-RULE-b
+  spec: "[ACIF-RULE] §6.2"
+  harness: static
+  description: mode required when activation block present
+  input:
+    rule: {activation: {globs: ["src/**/*.ts"]}}
+  expect:
+    error: acif.rule.activation_mode_missing
+
+- id: TV-RULE-c
+  spec: "[ACIF-RULE] §6.2"
+  harness: static
+  description: invalid mode values — unknown member and exact-byte violation
+  input:
+    variants:
+      - {rule: {activation: {mode: sometimes}}}
+      - {rule: {activation: {mode: " always"}}}
+  expect:
+    error: acif.rule.activation_mode_invalid
+
+- id: TV-RULE-d
+  spec: "[ACIF-RULE] §10, Appendix A.2"
+  harness: static
+  description: mapping-table totality — collapse, explicit manual, slash-command, legacy residual, unmapped mechanism
+  input:
+    cases:
+      - {source_sub_mode: frontmatter_globs, globs: ["*.ts"]}
+      - {source_sub_mode: manual}
+      - {source_sub_mode: slash_command}
+      - {source_sub_mode: legacy, always_apply: false, globs: null}
+      - {source_sub_mode: unknown_mechanism}
+  expect:
+    case_1: {mode: glob}
+    case_2: {mode: manual}
+    case_3: {mode: manual}
+    case_4: {mode: model_decision}
+    case_5: {error: acif.rule.activation_mode_unmappable}
+
+- id: TV-RULE-e
+  spec: "[ACIF-RULE] §6.2"
+  harness: static
+  description: glob consistency rejects, including empty array
+  input:
+    cases:
+      - {rule: {activation: {mode: glob}}}
+      - {rule: {activation: {mode: glob, globs: []}}}
+      - {rule: {activation: {mode: always, globs: ["src/**"]}}}
+  expect:
+    case_1: {error: acif.rule.glob_mode_without_globs}
+    case_2: {error: acif.rule.glob_mode_without_globs}
+    case_3: {error: acif.rule.globs_without_glob_mode}
+
+- id: TV-RULE-f
+  spec: "[ACIF-RULE] §9.1"
+  harness: static
+  description: D_K activation_mode — positive-set form
+  input:
+    cases:
+      - {activation: {mode: always}}
+      - {activation: {mode: glob, globs: ["*.ts"]}}
+      - {activation: {mode: model_decision}}
+      - {activation: {mode: manual}}
+      - {activation: absent}
+  expect:
+    case_1: derivable-false
+    case_2: derivable-true
+    case_3: derivable-true
+    case_4: derivable-true
+    case_5: derivable-false   # materialized always
+
+- id: TV-RULE-g
+  spec: "[ACIF-RULE] §12.1"
+  harness: static
+  description: projection shape with bounded globs
+  input:
+    rule:
+      activation:
+        mode: glob
+        globs: ["a/**", "b/**", "c/**"]
+  expect:
+    projection:
+      derivable: true
+      mode: glob
+      globs: {present: true, count: 3, sample: ["a/**", "b/**", "c/**"], truncated: false}   # sample capped at 16
+
+- id: TV-RULE-h
+  spec: "[ACIF-RULE] §9"
+  harness: static
+  description: empty or absent rule.requires is conformant
+  input:
+    variants:
+      - {rule: {activation: {mode: always}, requires: {}}}
+      - {rule: {activation: {mode: always}}}
+  expect:
+    conformant: true
+
+- id: TV-RULE-i
+  spec: "[ACIF-RULE] §9.3"
+  harness: static
+  description: orphan-key reject — three distinct reasons, one outcome
+  input:
+    cases:
+      - {rule: {requires: {file_imports: true}}}
+      - {rule: {requires: {activation_mode: glob}}}
+      - {rule: {requires: {handler_types: ["command"]}}}
+  expect:
+    case_1: {conformant: false, reason: acif.requires.orphan_key, reason_note: considered-and-rejected-candidate, params: {key: file_imports}}
+    case_2: {conformant: false, reason: acif.requires.orphan_key, reason_note: derivable-key-never-requires, params: {key: activation_mode}}
+    case_3: {conformant: false, reason: acif.requires.orphan_key, reason_note: foreign-type-key, params: {key: handler_types}}
+
+- id: TV-RULE-j
+  spec: "[ACIF-CORE] §9.5"
+  harness: static
+  description: unknown requires key → three-valued unknown
+  input:
+    consumer_recognizes: []
+    item_requires: {import_resolution: true}
+  expect:
+    evaluation: unknown
+    install: refuse-unless-operator-opt-in
+
+- id: TV-RULE-k
+  spec: "[ACIF-RULE] §8.3"
+  harness: static
+  description: prose-opacity round-trip — @-import syntax carried byte-verbatim; body_hash stable
+  input:
+    files:
+      conventions.md: "Follow @security.md and @~/company-standards.md.\n"
+  expect:
+    canonical_body_verbatim: true
+    render_back_verbatim: true
+    body_hash: "4bcb019272bd88d646c10ca0b7ca088bf8215d0114f08e43ef164884f50fed7c"
+
+- id: TV-RULE-l
+  spec: "[ACIF-RULE] §8.2; [ACIF-CORE] §7.8"
+  harness: static
+  description: hash boundary — declared mode re-target moves metadata_hash only; prose edit moves body_hash only
+  input:
+    base:
+      files: {conventions.md: "---\nactivation:\n  mode: manual\n---\nGuidance prose.\n"}
+    edits:
+      - {frontmatter: {activation: {mode: always}}}
+      - {prose: "Different guidance prose.\n"}
+  expect:
+    edit_1: {metadata_hash_moves: true, body_hash_moves: false}
+    edit_2: {metadata_hash_moves: false, body_hash_moves: true}
+
+- id: TV-RULE-m
+  spec: "[ACIF-RULE] §11"
+  harness: static
+  description: render degradation — manual rendered to a no-declaration-surface target requires the diagnostic
+  input:
+    canonical: {rule: {activation: {mode: manual}}}
+    render_target: no-declaration-surface-provider
+  expect:
+    emitted: rule-body
+    diagnostic: acif.rule.activation_degraded
+    diagnostic_names: {mode_lost: manual, effective_behavior: always-on}
