@@ -1,9 +1,11 @@
 {
   "name": "acif-ts",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "bin": {
-    "acif": "./bin/acif.ts"
+    "acif": "./bin/acif.ts",
+    "acif-adapter": "./bin/acif-adapter.ts"
   },
   "scripts": {
     "test": "vitest run",

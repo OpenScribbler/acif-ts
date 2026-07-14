@@ -25,7 +25,7 @@ interface ParsedOptions {
   readonly flags: ReadonlyMap<string, string>;
 }
 
-interface IngestedBody {
+export interface IngestedBody {
   readonly files: readonly BodyFileEntry[];
   readonly symlinks: readonly string[];
 }
@@ -164,7 +164,7 @@ function validateRecordRequires(record: unknown): CliRejection[] {
   return validateRequiresSlotForContentType(kind, requires).rejections.map(toCliRejection);
 }
 
-async function ingestDirectory(root: string): Promise<IngestedBody> {
+export async function ingestDirectory(root: string): Promise<IngestedBody> {
   const files: BodyFileEntry[] = [];
   const symlinks: string[] = [];
 
