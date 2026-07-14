@@ -8,6 +8,7 @@
     "acif-adapter": "./bin/acif-adapter.ts"
   },
   "scripts": {
+    "canary": "bash scripts/canary.sh",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
