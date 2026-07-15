@@ -1,6 +1,10 @@
 # Clean-room input snapshot for acif-ts
 source_repo: agent-content-interchange-format
-source_commit: b8c65f027a2c35bfd9f1aa6449965aa127629a9e
+# source_commit re-pinned 2026-07-14: the spec repo's history was rewritten
+# before publication (working-history paths removed); this is the rewritten
+# hash of the same snapshot point (was b8c65f027a2c). All file sha256 pins
+# below verified unchanged at the new commit.
+source_commit: cf422e496bf04bea4818f4b96c3e456fc2948747
 snapshot_date: 2026-07-14
 files:
   conformance/runner/PROTOCOL.md: 1f2f52025f4bf4ec1e71fcfd5f270f4bf246a7c9bdfd0da54f0c79adec6acdff
