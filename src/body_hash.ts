@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import { canonicalJson, canonicalJsonBytes } from "./canonical";
 import { canonicalizeHook } from "./hook";
+import { computeHookBodyHash } from "./hook_hash";
 
 export const BODY_HASH_ALGORITHM = "sha256" as const;
 export const REGISTRY_SIDECAR_FILENAME = "acif-sidecar.yaml";
@@ -290,36 +291,7 @@ export function stripEntryFrontmatter(canonicalText: BodyFileContent): Uint8Arra
   return bytes;
 }
 
-export function computeHookBodyHash(hook: unknown, body: InMemoryBody = { files: {} }): BodyHash {
-  const files = collectFiles(body.files);
-  assertNoSymlinks(body.symlinks);
-  assertNoPathCollisions(files);
-
-  const normalizedFiles = new Map(files.map((file) => [file.normalizedPath, file]));
-  const canonicalHook = normalizeHookWiring(canonicalizeHook(hook));
-  const referencedPaths = hookReferencedFilePaths(canonicalHook);
-
-  const manifestEntries = referencedPaths.map((path) => {
-    const file = normalizedFiles.get(path);
-    if (file === undefined) {
-      throw new AcifBodyHashError("acif.hook.script_file_missing", undefined, { path });
-    }
-    return {
-      path,
-      hash: hashFile(path, file.content),
-    };
-  });
-
-  manifestEntries.sort((left, right) => compareUtf8(left.path, right.path));
-  const manifestBytes = UTF8.encode(manifestEntries.map((entry) => `${entry.hash}  ${entry.path}\n`).join(""));
-  const directoryHash = `sha256:${sha256Hex(manifestBytes)}`;
-  const preimage = concatBytes(UTF8.encode(`${directoryHash}\n`), canonicalJsonBytes(canonicalHook), UTF8.encode("\n"));
-
-  return {
-    algorithm: BODY_HASH_ALGORITHM,
-    value: sha256Hex(preimage),
-  };
-}
+export { computeHookBodyHash };
 
 export function computeMcpBodyHash(mcp: unknown): BodyHash {
   const canonicalMcp = normalizeMcpWiring(mcp);
