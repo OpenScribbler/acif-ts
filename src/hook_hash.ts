@@ -81,7 +81,7 @@ function normalizeAuxiliaryFiles(canonicalHook: any): any {
  * The referenced-file set is: every `type: file` script entry's `path` across all handlers,
  * plus every `auxiliary_files` entry's `path`.
  */
-function getReferencedFilePaths(canonicalHook: any): string[] {
+export function getReferencedFilePaths(canonicalHook: any): string[] {
   const paths = new Set<string>();
 
   const handlers = canonicalHook.handlers || [];
