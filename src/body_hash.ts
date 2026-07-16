@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { canonicalJson, canonicalJsonBytes } from "./canonical";
 import { canonicalizeHook } from "./hook";
-import { computeHookBodyHash } from "./hook_hash";
+import { computeHookBodyHash, getReferencedFilePaths } from "./hook_hash";
 
 export const BODY_HASH_ALGORITHM = "sha256" as const;
 export const REGISTRY_SIDECAR_FILENAME = "acif-sidecar.yaml";
@@ -69,6 +69,7 @@ export type AcifBodyHashErrorId =
   | "acif.hook.script_no_platform_match"
   | "acif.hook.platform_mechanism_malformed"
   | "acif.hook.platform_unmappable"
+  | "acif.hook.no_default_for_degraded_render"
   | "acif.requires.orphan_key"
   | "acif.mcp.servers_missing"
   | "acif.mcp.transport_type_invalid"
@@ -291,7 +292,7 @@ export function stripEntryFrontmatter(canonicalText: BodyFileContent): Uint8Arra
   return bytes;
 }
 
-export { computeHookBodyHash };
+export { computeHookBodyHash, getReferencedFilePaths };
 
 export function computeMcpBodyHash(mcp: unknown): BodyHash {
   const canonicalMcp = normalizeMcpWiring(mcp);

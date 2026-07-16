@@ -23,7 +23,7 @@ describe("handleRequest protocol", () => {
         implementation: "acif-ts",
         version: "0.1.0",
         adapter_protocol: 2,
-        scopes: ["core"],
+        scopes: ["core", "hook"],
       },
     });
   });
@@ -245,7 +245,14 @@ describe("handleRequest protocol", () => {
     ).resolves.toEqual({
       ok: false,
       error: "acif.body.symlink",
-      diagnostics: [],
+      diagnostics: [
+        {
+          id: "acif.body.symlink",
+          params: {
+            path: "scripts/link.sh",
+          },
+        },
+      ],
     });
   });
 
@@ -302,6 +309,475 @@ describe("handleRequest protocol", () => {
         install: "refuse-unless-operator-opt-in",
         unknown_keys: ["gpu_access"],
       },
+    });
+  });
+
+  it("TV-HOOK-adapter-ingest ingests a hook sidecar and computes body_hash", async () => {
+    const sidecar = {
+      kind: "hook",
+      id: VALID_UUID_V4,
+      display_name: "Session Hook",
+      version: "0.1.0",
+      hook: {
+        event: "session_start",
+        handlers: [
+          {
+            type: "command",
+            scripts: [{ type: "inline", content: "echo hello" }]
+          }
+        ]
+      }
+    };
+
+    const res = await handleRequest({
+      op: "ingest",
+      input: {
+        kind: "hook",
+        sidecar
+      }
+    });
+
+    expect(res).toMatchObject({
+      ok: true,
+      result: {
+        conformant: true,
+        body_hash: expect.any(String)
+      }
+    });
+  });
+
+  it("TV-HOOK-adapter-ingest-config ingests a provider config and canonicalizes it", async () => {
+    const dir = await tempDir();
+    await writeFile(join(dir, "win.bat"), "@echo off");
+    await writeFile(join(dir, "linux.sh"), "#!/bin/sh");
+
+    const res = await handleRequest({
+      op: "ingest",
+      input: {
+        kind: "hook",
+        body_root: dir,
+        context: { event: "PreToolUse" },
+        provider_config: {
+          provider: "per-os-key-map-provider",
+          path: "hooks.json",
+          content: {
+            windows: "win.bat",
+            linux: "linux.sh"
+          }
+        }
+      }
+    });
+
+    expect(res).toMatchObject({
+      ok: true,
+      result: {
+        canonical: {
+          event: "before_tool_execute",
+          handlers: [
+            {
+              type: "command",
+              scripts: [
+                { path: "linux.sh", os: ["linux"] },
+                { path: "win.bat", os: ["windows"] }
+              ]
+            }
+          ]
+        },
+        body_hash: expect.any(String)
+      }
+    });
+  });
+
+  it("TV-HOOK-adapter-project projects os_coverage and derived_capabilities", async () => {
+    const item = {
+      kind: "hook",
+      hook: {
+        event: "session_start",
+        handlers: [
+          {
+            type: "command",
+            scripts: [
+              { path: "win.bat", os: ["windows"] },
+              { path: "linux.sh" }
+            ]
+          }
+        ]
+      }
+    };
+
+    // os_coverage
+    const res1 = await handleRequest({
+      op: "project",
+      input: {
+        item,
+        projection: "os_coverage"
+      }
+    });
+
+    expect(res1).toEqual({
+      ok: true,
+      result: {
+        projection: {
+          derivable: true,
+          os: ["windows"],
+          arch: [],
+          unconstrained: true,
+          os_divergent: true,
+          provenance: "declared"
+        }
+      }
+    });
+
+    // derived_capabilities
+    const res2 = await handleRequest({
+      op: "project",
+      input: {
+        item,
+        projection: "derived_capabilities"
+      }
+    });
+
+    expect(res2).toEqual({
+      ok: true,
+      result: {
+        derived_capabilities: {
+          handler_types: true,
+          matcher_patterns: false,
+          async_execution: false
+        }
+      }
+    });
+  });
+
+  it("TV-HOOK-adapter-render renders a hook to provider format", async () => {
+    const canonical = {
+      event: "before_tool_execute",
+      handlers: [
+        {
+          type: "command",
+          scripts: [
+            { path: "win.bat", os: ["windows"] },
+            { path: "linux.sh" }
+          ]
+        }
+      ]
+    };
+
+    const res = await handleRequest({
+      op: "render",
+      input: {
+        canonical,
+        target: "claude-code"
+      }
+    });
+
+    expect(res).toMatchObject({
+      ok: true,
+      result: {
+        output: expect.any(String),
+        lossy: [],
+        diagnostics: [
+          { id: "acif.hook.platform_override_dropped" }
+        ]
+      }
+    });
+  });
+
+  it("TV-HOOK-adapter-evaluate-install evaluates install rules", async () => {
+    const item = {
+      kind: "hook",
+      hook: {
+        event: "session_start",
+        blocking: true,
+        handlers: [
+          {
+            type: "command",
+            scripts: [
+              { path: "win.bat", os: ["windows"] }
+            ]
+          }
+        ]
+      }
+    };
+
+    const res = await handleRequest({
+      op: "evaluate_install",
+      input: {
+        item,
+        install_target_os: "linux"
+      }
+    });
+
+    expect(res).toMatchObject({
+      ok: true,
+      result: {
+        install: "refuse-unless-operator-opt-in",
+        diagnostics: [
+          { id: "acif.hook.script_no_platform_match", params: { os: "linux" } }
+        ]
+      }
+    });
+  });
+
+  it("TV-HOOK-adapter-bare-ingest ingests a BARE hook block and validates correctly", async () => {
+    const res = await handleRequest({
+      op: "ingest",
+      input: {
+        kind: "hook",
+        sidecar: {
+          event: "session_start",
+          handlers: [
+            {
+              type: "command",
+              scripts: [
+                { type: "inline", content: "#!/bin/sh\nexit 0\n" }
+              ]
+            }
+          ]
+        }
+      }
+    });
+
+    expect(res).toMatchObject({
+      ok: true,
+      result: {
+        conformant: true,
+        canonical: {
+          event: "session_start",
+          handlers: [
+            {
+              type: "command",
+              scripts: [
+                { type: "inline", content: "#!/bin/sh\nexit 0\n" }
+              ]
+            }
+          ]
+        }
+      }
+    });
+  });
+
+  it("TV-HOOK-adapter-script-selection evaluates script selection projection", async () => {
+    const res = await handleRequest({
+      op: "project",
+      input: {
+        projection: "script_selection",
+        targets: ["windows", "linux", "darwin"],
+        item: {
+          kind: "hook",
+          hook: {
+            event: "session_start",
+            handlers: [
+              {
+                type: "command",
+                scripts: [
+                  { path: "win.bat", os: ["windows"] },
+                  { path: "linux.sh", os: ["linux"] }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    });
+
+    expect(res).toMatchObject({
+      ok: true,
+      result: {
+        selection: {
+          windows: "win.bat",
+          linux: "linux.sh",
+          darwin: "none"
+        },
+        diagnostics: [
+          {
+            id: "acif.hook.script_no_platform_match",
+            params: { os: "darwin" }
+          }
+        ]
+      }
+    });
+  });
+
+  it("TV-HOOK-adapter-render-per-os-key-map-provider renders to provider and roundtrips", async () => {
+    const canonical = {
+      event: "before_tool_execute",
+      handlers: [
+        {
+          type: "command",
+          scripts: [
+            { path: "win.bat", os: ["windows"] },
+            { path: "linux.sh", os: ["linux"] },
+            { path: "mac.sh", os: ["darwin"] }
+          ]
+        }
+      ]
+    };
+
+    const resRender = await handleRequest({
+      op: "render",
+      input: {
+        canonical,
+        target: "per-os-key-map-provider"
+      }
+    });
+
+    expect(resRender).toMatchObject({
+      ok: true,
+      result: {
+        output: expect.any(String)
+      }
+    });
+
+    const parsedOutput = JSON.parse((resRender as any).result.output as string);
+    expect(parsedOutput).toEqual({
+      windows: "win.bat",
+      linux: "linux.sh",
+      osx: "mac.sh"
+    });
+
+    // Round-trip ingest
+    const dir = await tempDir();
+    await writeFile(join(dir, "win.bat"), "@echo off");
+    await writeFile(join(dir, "linux.sh"), "#!/bin/sh");
+    await writeFile(join(dir, "mac.sh"), "#!/bin/sh");
+
+    const resIngest = await handleRequest({
+      op: "ingest",
+      input: {
+        kind: "hook",
+        body_root: dir,
+        context: { event: "PreToolUse" },
+        provider_config: {
+          provider: "per-os-key-map-provider",
+          path: "hooks.json",
+          content: parsedOutput
+        }
+      }
+    });
+
+    expect(resIngest).toMatchObject({
+      ok: true,
+      result: {
+        canonical: {
+          event: "before_tool_execute",
+          handlers: [
+            {
+              type: "command",
+              scripts: [
+                { path: "mac.sh", os: ["darwin"] },
+                { path: "linux.sh", os: ["linux"] },
+                { path: "win.bat", os: ["windows"] }
+              ]
+            }
+          ]
+        }
+      }
+    });
+  });
+
+  it("resolves provider_config content from body_root when content is missing", async () => {
+    const dir = await tempDir();
+    const configContent = {
+      windows: "win.bat",
+      linux: "linux.sh",
+    };
+    await writeFile(join(dir, "hooks.json"), JSON.stringify(configContent));
+    await writeFile(join(dir, "win.bat"), "@echo off");
+    await writeFile(join(dir, "linux.sh"), "#!/bin/sh");
+
+    const res = await handleRequest({
+      op: "ingest",
+      input: {
+        kind: "hook",
+        body_root: dir,
+        context: { event: "PreToolUse" },
+        provider_config: {
+          provider: "per-os-key-map-provider",
+          path: "hooks.json",
+        },
+      },
+    });
+
+    expect(res).toMatchObject({
+      ok: true,
+      result: {
+        canonical: {
+          event: "before_tool_execute",
+          handlers: [
+            {
+              type: "command",
+              scripts: [
+                { path: "linux.sh", os: ["linux"] },
+                { path: "win.bat", os: ["windows"] }
+              ]
+            }
+          ]
+        },
+        body_hash: expect.any(String)
+      }
+    });
+  });
+
+  it("TV-HOOK-adapter-missing-body_root-no-error omits body_hash if file-type scripts exist and body_root is absent", async () => {
+    // 1. Hook with file-type script and no body_root -> should omit body_hash and not error
+    const resFile = await handleRequest({
+      op: "ingest",
+      input: {
+        kind: "hook",
+        sidecar: {
+          event: "session_start",
+          handlers: [
+            {
+              type: "command",
+              scripts: [
+                { type: "file", path: "scripts/start.sh", os: ["linux"] }
+              ]
+            }
+          ]
+        }
+      }
+    });
+
+    expect(resFile).toMatchObject({
+      ok: true,
+      result: {
+        conformant: true,
+        canonical: {
+          event: "session_start"
+        }
+      }
+    });
+    expect((resFile as any).result.body_hash).toBeUndefined();
+
+    // 2. Hook with inline-only scripts and no body_root -> should return body_hash
+    const resInline = await handleRequest({
+      op: "ingest",
+      input: {
+        kind: "hook",
+        sidecar: {
+          event: "session_start",
+          handlers: [
+            {
+              type: "command",
+              scripts: [
+                { type: "inline", content: "echo 'hello'", os: ["linux"] }
+              ]
+            }
+          ]
+        }
+      }
+    });
+
+    expect(resInline).toMatchObject({
+      ok: true,
+      result: {
+        conformant: true,
+        canonical: {
+          event: "session_start"
+        },
+        body_hash: expect.any(String)
+      }
     });
   });
 

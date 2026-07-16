@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import { AcifBodyHashError, computeFrontmatterBodyHash, computeHookBodyHash, computeMcpBodyHash } from "./body_hash";
+import { AcifBodyHashError, computeFrontmatterBodyHash, computeHookBodyHash, computeMcpBodyHash, getReferencedFilePaths } from "./body_hash";
 import { canonicalJson } from "./canonical";
 import { ingestDirectory } from "./cli";
 import { validateEnvelope } from "./envelope";
@@ -19,6 +19,9 @@ import {
   validateRequiresSlotForContentType,
   type AcifRequiresContentType,
 } from "./requires";
+import { projectOsCoverage, projectDerivedCapabilities, evaluateHookInstall, determineProvenanceRollup } from "./hook_project";
+import { renderHookBlock } from "./hook_render";
+import { canonicalizeHookWithPlatform, canonicalizeProviderPlatform, selectScript } from "./hook_platform";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -53,6 +56,9 @@ export async function handleRequest(request: unknown): Promise<unknown> {
   try {
     return await handleRequestUnsafe(request);
   } catch (error) {
+    if (error instanceof AcifBodyHashError) {
+      return specError(error.id, error.params);
+    }
     return adapterError(errorMessage(error));
   }
 }
@@ -104,7 +110,7 @@ async function handleRequestUnsafe(request: unknown): Promise<AdapterResponse> {
       implementation: "acif-ts",
       version: await packageVersion(),
       adapter_protocol: 2,
-      scopes: ["core"],
+      scopes: ["core", "hook"],
     });
   }
 
@@ -118,22 +124,51 @@ async function handleRequestUnsafe(request: unknown): Promise<AdapterResponse> {
       return resolvePack(input);
     case "evaluate_requires":
       return evaluateRequires(input);
+    case "project":
+      return project(input);
+    case "render":
+      return render(input);
+    case "evaluate_install":
+      return evaluateInstall(input);
     default:
       return unsupported();
   }
 }
 
 async function ingest(input: JsonRecord): Promise<AdapterResponse> {
+  if (input.kind === "hook" && isJsonRecord(input.provider_config)) {
+    return ingestProviderConfig(input);
+  }
+
   if (input.kind === "pack" && Array.isArray(input.manifests)) {
     return ingestPackManifests(input);
   }
 
   if (Object.hasOwn(input, "item_record")) {
-    return ok(validateRecord(input.item_record));
+    const record = input.item_record;
+    if (isHookRecord(record)) {
+      const { envelope } = normalizeHookSidecar(record);
+      return ok(validateRecord(envelope));
+    }
+    return ok(validateRecord(record));
   }
 
   if (isJsonRecord(input.item)) {
-    return ok(observeItem(input.item));
+    const record = input.item;
+    if (isHookRecord(record)) {
+      const { envelope } = normalizeHookSidecar(record);
+      const result: JsonRecord = {};
+      if (isJsonRecord(record.publisher_section)) {
+        result.publisher_section = record.publisher_section;
+        result.metadata_hash = computeMetadataHash(record.publisher_section).value;
+        if (Object.hasOwn(record.publisher_section, "version")) {
+          result.publisher_section_version = record.publisher_section.version;
+        }
+      }
+      Object.assign(result, validateRecord(envelope));
+      return ok(result);
+    }
+    return ok(observeItem(record));
   }
 
   if (isJsonRecord(input.publisher_section)) {
@@ -181,9 +216,49 @@ async function ingestBodyRoot(input: JsonRecord): Promise<AdapterResponse> {
     return ok(result);
   } catch (error) {
     if (error instanceof AcifBodyHashError) {
-      return specError(error.id);
+      return specError(error.id, error.params);
     }
     throw error;
+  }
+}
+
+function isHookRecord(record: unknown): record is JsonRecord {
+  if (!isJsonRecord(record)) {
+    return false;
+  }
+  const envelopeKind = selectedEnvelopeRecord(record)?.kind;
+  if (envelopeKind === "hook") {
+    return true;
+  }
+  if (Object.hasOwn(record, "hook")) {
+    return true;
+  }
+  if (Object.hasOwn(record, "event") && Object.hasOwn(record, "handlers")) {
+    return true;
+  }
+  return false;
+}
+
+function normalizeHookSidecar(sidecar: JsonRecord): { isBare: boolean; envelope: JsonRecord; hookBlock: JsonRecord } {
+  if (Object.hasOwn(sidecar, "hook")) {
+    return {
+      isBare: false,
+      envelope: sidecar,
+      hookBlock: isJsonRecord(sidecar.hook) ? sidecar.hook : {},
+    };
+  } else {
+    const syntheticEnvelope = {
+      kind: "hook",
+      id: "00000000-0000-4000-8000-000000000000",
+      display_name: "Bare Hook",
+      version: "0.1.0",
+      hook: sidecar,
+    };
+    return {
+      isBare: true,
+      envelope: syntheticEnvelope,
+      hookBlock: sidecar,
+    };
   }
 }
 
@@ -197,6 +272,59 @@ async function ingestSidecar(input: JsonRecord): Promise<AdapterResponse> {
     return unsupported();
   }
 
+  if (kind === "hook") {
+    const { isBare, envelope, hookBlock } = normalizeHookSidecar(input.sidecar);
+
+    const validation = validateRecord(envelope);
+    if (validation.conformant === false) {
+      const result: JsonRecord = {
+        ...validation,
+        canonical: hookBlock,
+        canonical_bytes: canonicalJson(hookBlock),
+      };
+      return ok(result);
+    }
+
+    const canonicalHookResult = canonicalizeHookWithPlatform(hookBlock);
+
+    const result: JsonRecord = { conformant: true };
+    const resolution = resolvePackMembership(envelope);
+    if (resolution.install === "proceed" && resolution.packResolution === undefined) {
+      result.installable = true;
+    }
+
+    result.canonical = canonicalHookResult.hook;
+    result.canonical_bytes = canonicalJson(canonicalHookResult.hook);
+
+    if (!isBare) {
+      const publisherSection = publisherSectionFromSidecar(kind, envelope);
+      if (publisherSection !== undefined) {
+        Object.assign(result, metadataResult(publisherSection));
+      }
+    }
+
+    if (typeof input.body_root === "string") {
+      const body = await ingestDirectory(input.body_root);
+      result.body_hash = computeHookBodyHash(canonicalHookResult.hook, {
+        files: body.files,
+        symlinks: body.symlinks,
+      }).value;
+    } else {
+      const referencedPaths = getReferencedFilePaths(canonicalHookResult.hook);
+      if (referencedPaths.length === 0) {
+        result.body_hash = computeHookBodyHash(canonicalHookResult.hook, {
+          files: {},
+        }).value;
+      }
+    }
+
+    if (canonicalHookResult.diagnostics.length > 0) {
+      result.diagnostics = canonicalHookResult.diagnostics;
+    }
+
+    return ok(result);
+  }
+
   try {
     const result: JsonRecord = { canonical: input.sidecar };
     Object.assign(result, validateRecord(input.sidecar));
@@ -206,20 +334,14 @@ async function ingestSidecar(input: JsonRecord): Promise<AdapterResponse> {
       Object.assign(result, metadataResult(publisherSection));
     }
 
-    if (kind === "hook" && Object.hasOwn(input.sidecar, "hook")) {
-      const body = typeof input.body_root === "string" ? await ingestDirectory(input.body_root) : undefined;
-      result.body_hash = computeHookBodyHash(input.sidecar.hook, {
-        files: body?.files ?? {},
-        symlinks: body?.symlinks,
-      }).value;
-    } else if (kind === "mcp_config" && Object.hasOwn(input.sidecar, "mcp")) {
+    if (kind === "mcp_config" && Object.hasOwn(input.sidecar, "mcp")) {
       result.body_hash = computeMcpBodyHash(input.sidecar.mcp).value;
     }
 
     return ok(result);
   } catch (error) {
     if (error instanceof AcifBodyHashError) {
-      return specError(error.id);
+      return specError(error.id, error.params);
     }
     throw error;
   }
@@ -348,6 +470,187 @@ function observeItem(item: JsonRecord): JsonRecord {
   return result;
 }
 
+async function ingestProviderConfig(input: JsonRecord): Promise<AdapterResponse> {
+  const context = isJsonRecord(input.context) ? input.context : undefined;
+  const eventName = typeof context?.event === "string" ? context.event : undefined;
+  const config = input.provider_config as any;
+
+  let content = config.content;
+  if (content === undefined || content === null) {
+    if (typeof input.body_root === "string" && typeof config.path === "string") {
+      const body = await ingestDirectory(input.body_root);
+      const configPath = config.path;
+      const fileEntry = body.files.find((f) => f.path === configPath);
+      if (fileEntry !== undefined) {
+        if (fileEntry.content instanceof Uint8Array) {
+          content = new TextDecoder().decode(fileEntry.content);
+        } else {
+          content = fileEntry.content;
+        }
+      }
+    }
+  }
+
+  const resolvedConfig = {
+    ...config,
+    content,
+  };
+
+  try {
+    const canonicalResult = canonicalizeProviderPlatform(resolvedConfig, eventName);
+    const rollupProvenance = determineProvenanceRollup(canonicalResult.hook, canonicalResult.provenance);
+
+    const result: JsonRecord = {
+      canonical: canonicalResult.hook,
+      canonical_bytes: canonicalJson(canonicalResult.hook),
+      provenance: rollupProvenance,
+    };
+
+    if (typeof input.body_root === "string") {
+      const body = await ingestDirectory(input.body_root);
+      result.body_hash = computeHookBodyHash(canonicalResult.hook, {
+        files: body.files,
+        symlinks: body.symlinks,
+      }).value;
+    } else {
+      const referencedPaths = getReferencedFilePaths(canonicalResult.hook);
+      if (referencedPaths.length === 0) {
+        result.body_hash = computeHookBodyHash(canonicalResult.hook, {
+          files: {},
+        }).value;
+      }
+    }
+
+    if (canonicalResult.diagnostics.length > 0) {
+      result.diagnostics = canonicalResult.diagnostics;
+    }
+
+    return ok(result);
+  } catch (error) {
+    if (error instanceof AcifBodyHashError) {
+      return specError(error.id, error.params);
+    }
+    throw error;
+  }
+}
+
+function project(input: JsonRecord): AdapterResponse {
+  const item = input.item;
+  if (!item) {
+    return unsupported();
+  }
+  const projectionName = input.projection;
+  if (typeof projectionName !== "string") {
+    return unsupported();
+  }
+
+  const hook = isJsonRecord(item) && item.hook !== undefined ? item.hook : (isJsonRecord(item) && item.kind === "hook" ? item.hook : item);
+  if (!hook) {
+    return unsupported();
+  }
+
+  if (projectionName === "os_coverage") {
+    const projectionValue = projectOsCoverage(hook, item);
+    return ok({
+      projection: projectionValue,
+    });
+  }
+
+  if (projectionName === "derived_capabilities") {
+    const projectionValue = projectDerivedCapabilities(hook);
+    return ok({
+      derived_capabilities: projectionValue,
+    });
+  }
+
+  if (projectionName === "script_selection") {
+    const targets = Array.isArray(input.targets) ? input.targets : [];
+    const selection: Record<string, string | "none"> = {};
+    const diagnostics: any[] = [];
+
+    const handler = isJsonRecord(hook) && Array.isArray(hook.handlers)
+      ? hook.handlers.find((h: any) => h.type === "command")
+      : undefined;
+    const scripts = handler?.scripts || [];
+
+    for (const target of targets) {
+      try {
+        const res = selectScript(scripts, target);
+        if (res.selected) {
+          selection[target] = (res.selected as any).path || "none";
+        } else {
+          selection[target] = "none";
+        }
+        if (res.diagnostics.length > 0) {
+          diagnostics.push(...res.diagnostics);
+        }
+      } catch (error) {
+        selection[target] = "none";
+        diagnostics.push({
+          id: "acif.hook.script_no_platform_match",
+          message: `No script entry matches the target OS '${target}'.`,
+          params: { os: target },
+        });
+      }
+    }
+
+    return ok({
+      selection,
+      diagnostics,
+    });
+  }
+
+  return unsupported();
+}
+
+function render(input: JsonRecord): AdapterResponse {
+  const canonical = input.canonical;
+  const target = input.target;
+  if (!canonical || typeof target !== "string") {
+    return unsupported();
+  }
+
+  const invocation = isJsonRecord(input.invocation) ? input.invocation : undefined;
+  const targetOs = typeof invocation?.target_os === "string" ? invocation.target_os : undefined;
+
+  const hook = isJsonRecord(canonical) && canonical.hook !== undefined ? canonical.hook : (isJsonRecord(canonical) && canonical.kind === "hook" ? canonical.hook : canonical);
+  if (!hook) {
+    return unsupported();
+  }
+
+  try {
+    const renderResult = renderHookBlock(hook, target, targetOs);
+    const result: JsonRecord = {
+      output: renderResult.output,
+      lossy: [],
+    };
+    if (renderResult.diagnostics.length > 0) {
+      result.diagnostics = renderResult.diagnostics;
+    }
+    return ok(result);
+  } catch (error) {
+    if (error instanceof AcifBodyHashError) {
+      return specError(error.id, error.params);
+    }
+    throw error;
+  }
+}
+
+function evaluateInstall(input: JsonRecord): AdapterResponse {
+  const item = input.item;
+  if (!item) {
+    return unsupported();
+  }
+
+  const targetOs = typeof input.install_target_os === "string" ? input.install_target_os : undefined;
+  const evaluation = evaluateHookInstall(item, targetOs);
+
+  return ok({
+    install: evaluation.install,
+    diagnostics: evaluation.diagnostics,
+  });
+}
+
 function validateRecord(record: unknown): JsonRecord {
   const envelopeResult = validateEnvelope(record);
   if (!envelopeResult.ok) {
@@ -358,6 +661,15 @@ function validateRecord(record: unknown): JsonRecord {
   const requiresRejection = firstRequiresRejection(record);
   if (requiresRejection !== undefined) {
     return verdict(false, requiresRejection.id, requiresRejection.params);
+  }
+
+  const envelopeRecord = selectedEnvelopeRecord(record);
+  const kind = envelopeRecord?.kind;
+  if (kind === "hook" && envelopeRecord !== undefined) {
+    const hookBlock = envelopeRecord.hook;
+    if (hookBlock !== undefined) {
+      canonicalizeHookWithPlatform(hookBlock);
+    }
   }
 
   const result: JsonRecord = { conformant: true };
@@ -543,8 +855,17 @@ function ok(result: JsonRecord): AdapterResponse {
   return { ok: true, result };
 }
 
-function specError(error: string): AdapterResponse {
-  return { ok: false, error, diagnostics: [] };
+function specError(errorId: string, params?: any): AdapterResponse {
+  return {
+    ok: false,
+    error: errorId,
+    diagnostics: [
+      {
+        id: errorId,
+        params: params ?? {},
+      },
+    ],
+  };
 }
 
 function adapterError(detail: string): AdapterResponse {
