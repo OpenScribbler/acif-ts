@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { canonicalJson, canonicalJsonBytes } from "./canonical";
+import { canonicalizeHook } from "./hook";
 
 export const BODY_HASH_ALGORITHM = "sha256" as const;
 export const REGISTRY_SIDECAR_FILENAME = "acif-sidecar.yaml";
@@ -54,6 +55,7 @@ export type AcifBodyHashErrorId =
   | "acif.body.symlink"
   | "acif.body.path_collision"
   | "acif.body.empty"
+  | "acif.hook.event_unrecognized"
   | "acif.hook.handlers_missing"
   | "acif.hook.handler_type_unrecognized"
   | "acif.hook.script_os_invalid"
@@ -63,6 +65,7 @@ export type AcifBodyHashErrorId =
   | "acif.hook.script_platform_ambiguous"
   | "acif.hook.script_file_missing"
   | "acif.hook.script_path_invalid"
+  | "acif.requires.orphan_key"
   | "acif.mcp.servers_missing"
   | "acif.mcp.transport_type_invalid"
   | "acif.mcp.transport_default_ambiguous"
@@ -290,7 +293,7 @@ export function computeHookBodyHash(hook: unknown, body: InMemoryBody = { files:
   assertNoPathCollisions(files);
 
   const normalizedFiles = new Map(files.map((file) => [file.normalizedPath, file]));
-  const canonicalHook = normalizeHookWiring(hook);
+  const canonicalHook = normalizeHookWiring(canonicalizeHook(hook));
   const referencedPaths = hookReferencedFilePaths(canonicalHook);
 
   const manifestEntries = referencedPaths.map((path) => {
