@@ -4,29 +4,33 @@ source_repo: agent-content-interchange-format
 # before publication (working-history paths removed); this is the rewritten
 # hash of the same snapshot point (was b8c65f027a2c). All file sha256 pins
 # below verified unchanged at the new commit.
-source_commit: cf422e496bf04bea4818f4b96c3e456fc2948747
-snapshot_date: 2026-07-14
+# Re-pinned 2026-07-16 for the hook scope (acif-5lk): picks up Decision #40
+# (source-mechanism token vocabulary, platform_unmappable/
+# platform_mechanism_malformed split, [ACIF-RULE] A.2 legacy pinning +
+# envelope rule), suite 6, and the repo's transfer to OpenScribbler.
+source_commit: 69d87655b80be52386c1501256652e2d6980baaf
+snapshot_date: 2026-07-16
 files:
   conformance/runner/PROTOCOL.md: 1f2f52025f4bf4ec1e71fcfd5f270f4bf246a7c9bdfd0da54f0c79adec6acdff
-  conformance/suite-manifest.yaml: aea36510f7f232e09008e12b2b224eb2a5c32ec9e0cdfe1cd7a00f8d8881c79d
+  conformance/suite-manifest.yaml: 9db70d49253447e5d87dd42771606bdafac3c86fcd0ec992296302b90b00cd9a
   conformance/vectors/agent.yaml: 9ee8000bb65f1ec536ea2b4bbfc6095491f627c06214362c1ce2df890c83ba62
   conformance/vectors/command.yaml: f21fc4ea33ea96756c1265c97092ada78332e5c10879f6bdf4e187ef5eb8791f
   conformance/vectors/core.yaml: 6ee229fcee55cce883a6a1b01e30140304eb9043e580a7a13727edcc83f49dc8
   conformance/vectors/fresh.yaml: 643cb8ad306dc09d397d85f3d7caaf6a3fc8e055a92f1cf2e783fc2fc5c93fdf
   conformance/vectors/hook.yaml: f32c93a57f93d7fc1e4e7b931ef942422f9606a3f5e6a4209e3c6a237707427f
   conformance/vectors/mcp.yaml: 3182608d87cf36b3f5420d065315091c6cd31d6496dd9de3eaf2fe1c336569f0
-  conformance/vectors/platform.yaml: edc238855b07542b0db16acdb68a023a884abb3c47a9edbda51f12df7f99c6cd
+  conformance/vectors/platform.yaml: d0cea92f04d4def754e6dcf3809335580692eb4e6d0585d64a234b4ae1c46a74
   conformance/vectors/render.yaml: 8de6a43006d5e68be7cdf1460719f9fd30270b3b18f4f63f63a5c54c8a9c0147
-  conformance/vectors/rule.yaml: 30528ca8a795520e5a05b9c6cc943c7d6234c26e6535fb13581ef191772eaa7f
+  conformance/vectors/rule.yaml: e473be422f5634a33d7c614a700fd95cbfae47354ba3e1719ded274c05dda44d
   conformance/vectors/skill.yaml: 74e9939811aa02fcd99e4bf56ff2ffcf1957a6fb9a587f6f3ab2f93d7d4176dc
   conformance/vectors/uri.yaml: 050e4f1c7232b4750a3c1ba0e36bc2482671891606815b1a8ffaef020b19625c
   specs/agent-interchange/spec.md: 1c0afb7953340e02b10e82c0ca85c094ff0b4e431d984b4287ac92b727cff9ed
   specs/command-interchange/spec.md: 22381e54fcf7fc6959c1f3a81f7667a7843e20824e44dd9d6755ef99bf27c856
   specs/core/spec.md: 9c40f3288e584cab2a068c49ed235db64de72c1bb2e35d5735b88f65aa93ed9d
-  specs/hooks-interchange/spec.md: 4d7f5afccdba2f9067ca8cfbf46544c945c6a56896fcd9cf3dd9547fc3addb04
+  specs/hooks-interchange/spec.md: f4784f1096ac33f888f74d35e24dbcdd5103020c9ae8490606f5a9ac347cb42e
   specs/mcp-interchange/spec.md: f60b6283fda5f60dd65cd128ea0f65dcb066be254a871929019fb181c11efd0f
   specs/publisher-spec/spec.md: e30afbbcd51efd66ec953636601ef333d25e314548385cc033c19c89b2270366
-  specs/registry-spec/spec.md: 981736c7c61e2e69f52182239dd2a076410f6366aa62f109696a0c6b4f7d531b
+  specs/registry-spec/spec.md: 282fdac055df6290465b431c4a045cd73f9b3da3726d3840ba0906e807e963fe
   specs/render-back/spec.md: 3f2f46f906e71d0547cba51dd5aba86c7c30b4be1a8c8a9cf990a0ca1951b8db
-  specs/rule-interchange/spec.md: 2e29caa3bee46f222cf845d9e663cc01174e833c73f4699cf391231653b75656
+  specs/rule-interchange/spec.md: fbdac143f4edc2ba84dd550c7138bc2b01d1fd1548287980a127c988af1d0c86
   specs/skill-interchange/spec.md: 7c34e9923b4eee792136da4545a9c5e3b3023cf00685a5f703a33388bcfcfd67
