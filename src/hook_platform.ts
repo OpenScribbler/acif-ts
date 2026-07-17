@@ -213,7 +213,9 @@ function getFilenameExtension(path: string): string {
   if (dotIndex === -1 || dotIndex === 0) {
     return "";
   }
-  return filename.slice(dotIndex);
+  // [ACIF-HOOK] §7.4: extension comparison is case-insensitive (ASCII fold
+  // of the extension only); the path itself is never case-folded.
+  return filename.slice(dotIndex).toLowerCase();
 }
 
 /**
