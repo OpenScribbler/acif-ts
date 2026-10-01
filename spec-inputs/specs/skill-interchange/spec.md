@@ -162,9 +162,11 @@ Each predicate produces `{derivable-true, derivable-false}` per the boolean disc
 
 ### 10.2 OUT-OF-SCOPE-AT-L1 keys *(informative rationale)*
 
-`display_name`, `description`, `license`, `compatibility`, and `metadata_map` are meta-properties (`description` is load-bearing as a moderation and injection surface, not as a capability signal; `compatibility` is a registry compatibility-matrix concern). `version` is common-envelope material ([ACIF-CORE] §5.1). `project_scope`, `global_scope`, and `shared_scope` are install-location-determined and surface through the `install_scope_capabilities` projection ([ACIF-REGISTRY]). `canonical_filename` and `custom_filename` are discovery/filename meta (§9). Under the out-of-band guardrail ([ACIF-CORE] §9.3) none is `requires`-eligible.
+`display_name`, `description`, `license`, `compatibility`, and `metadata_map` are meta-properties (`description` is load-bearing as a moderation and injection surface, not as a capability signal; `compatibility` is a registry compatibility-matrix concern). `version` is common-envelope material ([ACIF-CORE] §5.1). `project_scope`, `global_scope`, and `shared_scope` are install-location-determined: scope *compatibility* surfaces through the `install_scope_capabilities` projection ([ACIF-REGISTRY]), and the on-disk locations themselves live in the provider install-target matrix ([ACIF-INSTALL] Appendix A.2). `canonical_filename` and `custom_filename` are discovery/filename meta (§9). Under the out-of-band guardrail ([ACIF-CORE] §9.3) none is `requires`-eligible.
 
 Latent frontmatter fields observed in provider skill formats (allowed-tools, model, bundled hook declarations) are carried as opaque passthrough where present and are roadmap candidates for canonical promotion; their presence MUST NOT soften the orphan-key reject below.
+
+Claude Code's `when_to_use` is carried the same way, verbatim and never merged into `description`. It supplements the description as selection guidance, a job `description` already does in every other surveyed provider, so it is a single-provider field rather than a promotion candidate. Merging it would change declared `description` bytes and could not be reversed at render-back.
 
 ### 10.3 Orphan keys
 
@@ -238,7 +240,7 @@ Reject-class identifiers make canonicalization fail. All reject diagnostics for 
 - [ACIF-RENDER] "ACIF Render-Back Specification", version 0.1.x. `../render-back/spec.md`.
 - [ACIF-RULE] "ACIF Rule Interchange Specification", version 0.1.x. `../rule-interchange/spec.md`.
 - [ACIF-MCP] "ACIF MCP Configuration Interchange Specification", version 0.1.x. `../mcp-interchange/spec.md`.
-- [SHAPE] ACIF design record: `SHAPE.md` and `panel/skills-requires-consensus.md` in the ACIF repository — decision provenance (Decisions #19, #21, #22, #23 and their amendments).
+- [SHAPE] ACIF design record: `SHAPE.md` in the ACIF repository — decision provenance (Decisions #19, #21, #22, #23 and their amendments).
 
 ---
 
@@ -256,7 +258,7 @@ Individual vector IDs are assigned in the conformance suite.
 
 ## Appendix C — Provenance and Preserved Positions (Informative)
 
-Promoted 2026-07-11 from the ACIF design record: the skill extension block and Decisions #19, #21, #22, and #23 (skills application) of `SHAPE.md`, with the full deliberation record in `panel/skills-requires-consensus.md`. This document replaces an earlier `specs/skill-interchange` draft that predated the skills capability walk.
+Promoted 2026-07-11 from the ACIF design record: the skill extension block and Decisions #19, #21, #22, and #23 (skills application) of `SHAPE.md`. This document replaces an earlier `specs/skill-interchange` draft that predated the skills capability walk.
 
 Preserved positions recorded for future revision: Remy's adoption-data objection to the `user_invocable` surface (only one surveyed provider carries an explicit frontmatter key; re-evaluate if repo surveys show authors declaring it or not); the skills-as-highest-risk-content-type threat context (description injection, auto-invocation typosquatting, bundled-resource payloads, metadata license laundering) recorded for the registry-operator track; moderation revalidation cadence recorded as registry discretion, not a conformance requirement.
 

@@ -1,5 +1,15 @@
+import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import { canonicalizeHook, translateEventName, normalizeInlineContent, validateReferencedPath, translateMatcher } from "../src/hook";
+import {
+  CANONICAL_EVENTS,
+  HOOK_EVENT_PROVIDERS,
+  HOOK_EVENT_TABLE,
+  canonicalizeHook,
+  translateEventName,
+  normalizeInlineContent,
+  validateReferencedPath,
+  translateMatcher,
+} from "../src/hook";
 import { AcifBodyHashError } from "../src/body_hash";
 
 function expectAcifError(fn: () => unknown, id: string): void {
@@ -28,6 +38,36 @@ function expectPlainError(fn: () => unknown, messageSubstring?: string): void {
   throw new Error("Expected plain Error");
 }
 
+interface SpecHookEventRow {
+  canonical: string;
+  providers: Record<string, string[]>;
+}
+
+async function readSpecHookEventRows(): Promise<SpecHookEventRow[]> {
+  const spec = new TextDecoder().decode(
+    await readFile("spec-inputs/specs/hooks-interchange/spec.md"),
+  );
+  const sectionStart = spec.indexOf("### A.1 Canonical names and provider mappings");
+  const sectionEnd = spec.indexOf("\n### A.2 Event-name validity", sectionStart);
+  if (sectionStart < 0 || sectionEnd < 0) {
+    throw new Error("Could not locate ACIF-HOOK Appendix A.1");
+  }
+
+  const rows: SpecHookEventRow[] = [];
+  for (const line of spec.slice(sectionStart, sectionEnd).split("\n")) {
+    const rowMatch = line.match(/^\|\s*`([^`]+)`\s*\|\s*(.*?)\s*\|$/);
+    if (!rowMatch) continue;
+
+    const providers: Record<string, string[]> = {};
+    for (const match of rowMatch[2].matchAll(/([a-z][a-z0-9-]*)\s+`([^`]+)`/g)) {
+      const names = providers[match[1]] ??= [];
+      names.push(match[2]);
+    }
+    rows.push({ canonical: rowMatch[1], providers });
+  }
+  return rows;
+}
+
 describe("canonicalizeHook event translation", () => {
   it("keeps canonical event names as is", () => {
     expect(translateEventName("before_tool_execute")).toBe("before_tool_execute");
@@ -41,12 +81,53 @@ describe("canonicalizeHook event translation", () => {
     expect(translateEventName("BeforeAgent")).toBe("before_prompt");
   });
 
-  it("handles Appendix A.1 transcription gap: sessionStart -> session_start", () => {
+  it("canonicalizes sessionStart as listed in Appendix A.1", () => {
     expect(translateEventName("sessionStart")).toBe("session_start");
   });
 
   it("handles Appendix A.3 tiebreaker for errorOccurred", () => {
     expect(translateEventName("errorOccurred")).toBe("error_occurred");
+  });
+
+  it("matches every canonical event and provider-native name in Appendix A.1", async () => {
+    const specRows = await readSpecHookEventRows();
+    const implementationRows = HOOK_EVENT_TABLE.map(({ canonical, providers }) => ({
+      canonical,
+      providers: Object.fromEntries(
+        Object.entries(providers).map(([provider, names]) => [provider, [...names]]),
+      ),
+    }));
+
+    expect(specRows).toHaveLength(44);
+    expect(implementationRows).toEqual(specRows);
+    expect(CANONICAL_EVENTS).toEqual(new Set(specRows.map(({ canonical }) => canonical)));
+    expect(HOOK_EVENT_PROVIDERS).toEqual(
+      new Set(specRows.flatMap(({ providers }) => Object.keys(providers))),
+    );
+
+    const expectedCanonicalForNative = new Map<string, string[]>();
+    for (const row of specRows) {
+      for (const nativeName of Object.values(row.providers).flat()) {
+        const candidates = expectedCanonicalForNative.get(nativeName) ?? [];
+        if (!candidates.includes(row.canonical)) candidates.push(row.canonical);
+        expectedCanonicalForNative.set(nativeName, candidates);
+      }
+    }
+    for (const [nativeName, candidates] of expectedCanonicalForNative) {
+      const expected = nativeName === "errorOccurred"
+        ? "error_occurred"
+        : [...candidates].sort()[0];
+      expect(translateEventName(nativeName), nativeName).toBe(expected);
+    }
+  });
+
+  it("rejects native names removed from all A.1 provider columns", () => {
+    expectAcifError(() => translateEventName("beforeAgentResponse"), "acif.hook.event_unrecognized");
+    expectAcifError(() => translateEventName("beforeToolSelection"), "acif.hook.event_unrecognized");
+  });
+
+  it("recognizes SubagentStart where A.1 still lists it for other providers", () => {
+    expect(translateEventName("SubagentStart")).toBe("subagent_start");
   });
 
   it("rejects unrecognized event names with acif.hook.event_unrecognized", () => {
@@ -77,6 +158,53 @@ describe("canonicalizeHook matcher translation", () => {
 
   it("leaves unrecognized components byte-verbatim", () => {
     expect(translateMatcher("SomeUnknownTool|Read")).toBe("SomeUnknownTool|file_read");
+  });
+
+  it.each([
+    "before_shell_execute",
+    "after_shell_execute",
+    "before_mcp_execute",
+    "after_mcp_execute",
+    "before_file_read",
+  ])("passes matcher bytes through on %s", (event) => {
+    const matcher = "Read|Bash";
+    const result = canonicalizeHook({
+      event,
+      matcher,
+      handlers: [{ type: "command", scripts: [{ type: "file", path: "hooks/run.sh" }] }],
+    });
+
+    expect(result.event).toBe(event);
+    expect(result.matcher).toBe(matcher);
+  });
+
+  it.each(["before_tool_execute", "after_tool_execute"])(
+    "still translates matcher tool names on the general tool event %s",
+    (event) => {
+      const result = canonicalizeHook({
+        event,
+        matcher: "Read|Bash",
+        handlers: [{ type: "command", scripts: [{ type: "file", path: "hooks/run.sh" }] }],
+      });
+
+      expect(result.matcher).toBe("file_read|shell");
+    },
+  );
+
+  it("keeps narrow events distinct from general tool events", () => {
+    const events = [
+      "before_shell_execute",
+      "after_shell_execute",
+      "before_mcp_execute",
+      "after_mcp_execute",
+      "before_file_read",
+      "before_tool_execute",
+      "after_tool_execute",
+    ];
+    const canonicalEvents = events.map((event) => translateEventName(event));
+
+    expect(new Set(canonicalEvents).size).toBe(events.length);
+    expect(canonicalEvents.slice(0, 5)).toEqual(events.slice(0, 5));
   });
 });
 

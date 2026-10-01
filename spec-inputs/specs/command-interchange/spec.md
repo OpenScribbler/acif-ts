@@ -122,9 +122,11 @@ The `$ARGUMENTS` token lives in body prose; no canonical field carries it, and u
 
 The contrast case is [ACIF-MCP] §9.1's `env_var_expansion`, which IS a derivation despite also scanning for a token: its domain is a pinned closed set of structured wiring fields, while this scan's domain is unstructured body prose. The line is domain structure — the same rule disposes both.
 
-### 9.2 OUT-OF-SCOPE-AT-L1: `builtin_commands` *(informative rationale)*
+### 9.2 OUT-OF-SCOPE-AT-L1: `builtin_commands`, `command_scopes` *(informative rationale)*
 
 Whether a provider ships built-in commands is a provider-side namespace fact — not authored on the item, not derivable from any body. It surfaces as a `provider_capability_coverage` row. Recorded severity finding: **HIGH in the shadowing direction** — a published command whose name collides with a provider builtin resolves to the wrong handler silently (silent semantic corruption, not a safe no-op). A normative shadowing check is infeasible in 0.1 — builtin name-sets vary per provider release and per plan, a brittle-list trap — so the countermeasures are registry-discretion lint (§10.3) and a roadmap builtin-namespace entry. The reverse direction (a body invoking a missing builtin) degrades to a no-op; LOW.
+
+`command_scopes` is install-location-determined ([ACIF-CORE] §9.2): the canonical body carries no install path. Which scopes a provider offers is a provider-matrix fact ([ACIF-CORE] §9.3) recorded in [ACIF-INSTALL] Appendix A.2, and the scope an item lands at is decided at install time. Publisher scope intent surfaces only as an unverified `source: publisher_claim` entry in `install_scope_capabilities` ([ACIF-REGISTRY] §8.5), never as an item field; because the body carries no install path, no such entry for a command can carry `source: canonical`. The key names install location only: how a provider orders or merges commands found at several scopes is a provider-matrix fact, not part of this key. It is the command counterpart of [ACIF-AGENT] `agent_scopes` and [ACIF-HOOK] `hook_scopes`. It is neither body-carried nor a user-environment fact and is not `requires`-eligible.
 
 ### 9.3 Orphan keys
 
@@ -205,7 +207,7 @@ This vocabulary deliberately mints no reject identifiers (§7). The two obligati
 - [ACIF-PUBLISHER] "ACIF Publisher Record Specification", version 0.1.x. `../publisher-spec/spec.md`.
 - [ACIF-REGISTRY] "ACIF Registry Specification", version 0.1.x. `../registry-spec/spec.md`.
 - [ACIF-RENDER] "ACIF Render-Back Specification", version 0.1.x. `../render-back/spec.md`.
-- [SHAPE] ACIF design record: `SHAPE.md` and `panel/commands-requires-consensus.md` in the ACIF repository — decision provenance (Decisions #12, #23 as refined, #31).
+- [SHAPE] ACIF design record: `SHAPE.md` in the ACIF repository — decision provenance (Decisions #12, #23 as refined, #31).
 
 ---
 
@@ -250,10 +252,12 @@ Individual vector IDs are assigned in the conformance suite.
 
 ## Appendix C — Provenance and Preserved Positions (Informative)
 
-Promoted 2026-07-11 from the ACIF design record: the command extension block and Decisions #12, #23 (commands application, derivation-vs-heuristic refinement, three-way routing) and #31 of `SHAPE.md`, with the full deliberation record in `panel/commands-requires-consensus.md` — the final walk of the capability series, closing the `requires` question six-for-six.
+Promoted 2026-07-11 from the ACIF design record: the command extension block and Decisions #12, #23 (commands application, derivation-vs-heuristic refinement, three-way routing) and #31 of `SHAPE.md` — the final walk of the capability series, closing the `requires` question six-for-six.
 
 Preserved positions recorded for future revision: registry-operator's DERIVABLE-with-totality minority position (the advisory projection ships the same installer join, so the practical loss was the `derivable` flag, not the signal; his existence-proof framing — a deterministic advisory scan at registry scale is evidence a structured import grammar could run too — is input to the reference-grammar roadmap item); spec-purist's conditional body-token discipline (the authorship test, boundary-precise, disclosed-imprecision — the recorded design if body-content derivation is ever legitimized, which requires a structured canonical record, never a prose scan promoted to a predicate); Remy's sparse-vocabulary caveat (two keys is the weakest evidence in the series; the validation weight rests on the rules walk).
 
 Newly minted at spec-promotion time (not present in the design record; flagged for review): the identifier `acif.command.placeholder_untranslated` and its dual-actor obligation (§10.2/§11 — the design record described the render warning and the install-time SHOULD-warn without naming an identifier; the template discipline requires SHOULD-warn obligations to carry one); the §10.3 requirement that a discretionary shadowing advisory, when emitted, names the provider(s) and colliding name; and the TV-COMMAND (h′)/(m) vectors. These items were ratified back into the design record (SHAPE.md, Spec-Promotion Ratifications section) at promotion time.
 
 Amended after the second independent review (2026-07-11): the Appendix A.1 source-form grammar pinned for table-membership decidability, and the §8.1 entry-file statement that commands pin no canonical filename.
+
+Amended 2026-09-30 (SHAPE.md Decision #48, Class C): `command_scopes` added to §9.2 as an OUT-OF-SCOPE-AT-L1 install-location key, so this vocabulary carries a scope key as the agent and hook vocabularies do.

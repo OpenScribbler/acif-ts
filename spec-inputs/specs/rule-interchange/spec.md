@@ -129,6 +129,8 @@ The predicate produces `{derivable-true, derivable-false}`: derivable-true means
 
 `cross_provider_recognition` is provider-side format recognition (which providers auto-read other providers' rule files) — a provider-matrix fact. `auto_memory` is a provider-runtime feature entirely outside the publish pipeline. `hierarchical_loading` (multi-level directory loading with precedence) is likewise a provider-matrix fact; all three surface through the `provider_capability_coverage` projection ([ACIF-REGISTRY]), not through any item field.
 
+`rule_scopes` is install-location-determined ([ACIF-CORE] §9.2): the canonical body carries no install path. Which scopes a provider offers is a provider-matrix fact ([ACIF-CORE] §9.3) recorded in [ACIF-INSTALL] Appendix A.2, and the scope an item lands at is decided at install time. Publisher scope intent surfaces only as an unverified `source: publisher_claim` entry in `install_scope_capabilities` ([ACIF-REGISTRY] §8.5), never as an item field; because the body carries no install path, no such entry for a rule can carry `source: canonical`. It is the rule counterpart of [ACIF-AGENT] `agent_scopes` and [ACIF-HOOK] `hook_scopes`, and it is distinct from `hierarchical_loading`: `rule_scopes` names where an item may be installed, while `hierarchical_loading` names how a provider combines rules it finds at several levels. A rule placed in a project subdirectory is at `project` scope; whether a provider reads it there is `hierarchical_loading`. It is neither body-carried nor a user-environment fact and is not `requires`-eligible.
+
 ### 9.3 Orphan keys
 
 Any `requires.<key>` on a rule item is non-conformant ([ACIF-CORE] §9.4) — including `requires.file_imports` (the considered-and-rejected candidate; its rejection is load-bearing), `requires.activation_mode` (DERIVABLE keys are never `requires` keys), and keys recognized for other content types. An unrecognized key evaluated by a consumer follows the three-valued rule ([ACIF-CORE] §9.5).
@@ -213,7 +215,7 @@ Reject-class identifiers make canonicalization fail; the diagnostic accompanies 
 - [ACIF-REGISTRY] "ACIF Registry Specification", version 0.1.x. `../registry-spec/spec.md`.
 - [ACIF-RENDER] "ACIF Render-Back Specification", version 0.1.x. `../render-back/spec.md`.
 - [ACIF-MCP] "ACIF MCP Configuration Interchange Specification", version 0.1.x. `../mcp-interchange/spec.md`.
-- [SHAPE] ACIF design record: `SHAPE.md` and `panel/rules-requires-consensus.md` in the ACIF repository — decision provenance (Decisions #23 as amended, #30).
+- [SHAPE] ACIF design record: `SHAPE.md` in the ACIF repository — decision provenance (Decisions #23 as amended, #30).
 
 ---
 
@@ -268,7 +270,7 @@ Individual vector IDs are assigned in the conformance suite.
 
 ## Appendix C — Provenance and Preserved Positions (Informative)
 
-Promoted 2026-07-11 from the ACIF design record: the rule extension block and Decisions #23 (rules application, out-of-band guardrail) and #30 of `SHAPE.md`, with the full deliberation record in `panel/rules-requires-consensus.md` — the first 2:2 panel split of the capability-walk series, resolved by the working group to keep `rules.requires` empty.
+Promoted 2026-07-11 from the ACIF design record: the rule extension block and Decisions #23 (rules application, out-of-band guardrail) and #30 of `SHAPE.md` — the first 2:2 panel split of the capability-walk series, resolved by the working group to keep `rules.requires` empty.
 
 Preserved positions recorded for future revision: spec-purist's ADMIT dissent on `file_imports` (fails the works-fine-without-it severity test; MUST be re-heard before any permanent never-parse resolution of the reference-grammar roadmap item); registry-operator's graceful-degradation class for `requires` evaluation (moot with no admitted key; reconsider if a graceful-class key ever lands); Remy's three-value-enum caution (round-trip resolving power; the Appendix A.2 residual rule is the mitigation — if round-trip divergence appears in practice, the mapping table is the file to fix); Karpathy's two-field minimal block (overridden; his out-of-band guardrail was adopted into [ACIF-CORE] §9.3).
 
@@ -277,3 +279,5 @@ Newly minted at spec-promotion time (not present in the design record; flagged f
 Amended after the second independent review (2026-07-11): the §8.1 entry-file statement that rules pin no canonical filename.
 
 Amended 2026-07-16 (SHAPE.md Decision #40, Gate B spec-purist review): the Appendix A.2 source-mechanism token vocabulary (closed set, ownership, export naming, `unknown-` reservation), the §10 two-stage recognition/mapping contract, the full `legacy` interior mapping with typed field participation and the always-branch glob discard (ratifying shipped canonicalizer behavior; no expectation flips, no canonical bytes move), the §10 envelope rule routing modeless provider configurations to `acif.rule.activation_mode_missing` rather than the totality net, and the TV-RULE (n)/(o) vectors.
+
+Amended 2026-09-30 (SHAPE.md Decision #48, Class C): `rule_scopes` added to §9.2 as an OUT-OF-SCOPE-AT-L1 install-location key, so this vocabulary carries a scope key as the agent and hook vocabularies do.

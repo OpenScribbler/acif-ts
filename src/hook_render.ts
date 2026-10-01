@@ -1,200 +1,137 @@
 import { canonicalJson } from "./canonical";
 import { selectScript } from "./hook_platform";
 import { AcifBodyHashError } from "./body_hash";
+import { getHookEventNativeNames, HOOK_EVENT_PROVIDERS } from "./hook";
 
-export const CANONICAL_TO_NATIVE_EVENT: Record<string, Record<string, string>> = {
-  before_tool_execute: {
-    "claude-code": "PreToolUse",
-    "gemini-cli": "BeforeTool",
-    "copilot-cli": "preToolUse",
-    "kiro": "preToolUse",
-    "cursor": "PreToolUse",
-    "opencode": "tool.execute.before",
-    "vs-code-copilot": "PreToolUse",
-    "factory-droid": "PreToolUse",
-    "pi": "tool_call"
+export interface HookEventRenderPin {
+  readonly canonical: string;
+  readonly provider: string;
+  readonly target: string;
+  readonly fidelity: "lossless" | "degraded";
+}
+
+// Appendix A.4 pins are independent of A.1: the spec says adding A.1 names
+// does not change these selected render targets or their fidelity classes.
+export const HOOK_EVENT_RENDER_PINS: readonly HookEventRenderPin[] = [
+  {
+    canonical: "before_prompt",
+    provider: "devin",
+    target: "UserPromptSubmit",
+    fidelity: "lossless",
   },
-  after_tool_execute: {
-    "claude-code": "PostToolUse",
-    "gemini-cli": "AfterTool",
-    "copilot-cli": "postToolUse",
-    "kiro": "postToolUse",
-    "cursor": "PostToolUse",
-    "opencode": "tool.execute.after",
-    "vs-code-copilot": "PostToolUse",
-    "factory-droid": "PostToolUse",
-    "pi": "tool_result"
+  { canonical: "agent_stop", provider: "devin", target: "Stop", fidelity: "lossless" },
+  {
+    canonical: "session_start",
+    provider: "devin",
+    target: "SessionStart",
+    fidelity: "lossless",
   },
-  before_prompt: {
-    "claude-code": "UserPromptSubmit",
-    "gemini-cli": "BeforeAgent",
-    "copilot-cli": "userPromptSubmitted",
-    "kiro": "userPromptSubmit",
-    "cursor": "UserPromptSubmit",
-    "windsurf": "pre_user_prompt",
-    "vs-code-copilot": "UserPromptSubmit",
-    "factory-droid": "UserPromptSubmit",
-    "pi": "input"
+  { canonical: "session_end", provider: "devin", target: "SessionEnd", fidelity: "lossless" },
+  {
+    canonical: "worktree_create",
+    provider: "devin",
+    target: "post_setup_worktree",
+    fidelity: "degraded",
   },
-  agent_stop: {
-    "claude-code": "Stop",
-    "gemini-cli": "AfterAgent",
-    "kiro": "stop",
-    "copilot-cli": "agentStop",
-    "cursor": "Stop",
-    "windsurf": "post_cascade_response",
-    "opencode": "session.idle",
-    "vs-code-copilot": "Stop",
-    "factory-droid": "Stop",
-    "pi": "agent_end"
+  {
+    canonical: "transcript_export",
+    provider: "devin",
+    target: "post_cascade_response_with_transcript",
+    fidelity: "degraded",
   },
-  session_start: {
-    "claude-code": "SessionStart",
-    "gemini-cli": "SessionStart",
-    "copilot-cli": "sessionStart",
-    "kiro": "agentSpawn",
-    "cursor": "SessionStart",
-    "windsurf": "session_start",
-    "opencode": "session.created",
-    "vs-code-copilot": "SessionStart",
-    "factory-droid": "SessionStart",
-    "pi": "session_start"
+  { canonical: "file_changed", provider: "devin", target: "post_write_code", fidelity: "degraded" },
+  {
+    canonical: "before_shell_execute",
+    provider: "devin",
+    target: "pre_run_command",
+    fidelity: "degraded",
   },
-  session_end: {
-    "claude-code": "SessionEnd",
-    "gemini-cli": "SessionEnd",
-    "copilot-cli": "sessionEnd",
-    "cursor": "SessionEnd",
-    "windsurf": "session_end",
-    "factory-droid": "SessionEnd",
-    "pi": "session_shutdown"
+  {
+    canonical: "after_shell_execute",
+    provider: "devin",
+    target: "post_run_command",
+    fidelity: "degraded",
   },
-  before_compact: {
-    "claude-code": "PreCompact",
-    "gemini-cli": "PreCompress",
-    "cursor": "PreCompact",
-    "vs-code-copilot": "PreCompact",
-    "factory-droid": "PreCompact",
-    "pi": "session_before_compact"
+  {
+    canonical: "before_mcp_execute",
+    provider: "devin",
+    target: "pre_mcp_tool_use",
+    fidelity: "degraded",
   },
-  notification: {
-    "claude-code": "Notification",
-    "gemini-cli": "Notification"
+  {
+    canonical: "after_mcp_execute",
+    provider: "devin",
+    target: "post_mcp_tool_use",
+    fidelity: "degraded",
   },
-  subagent_start: {
-    "claude-code": "SubagentStart",
-    "cursor": "SubagentStart",
-    "vs-code-copilot": "SubagentStart",
-    "factory-droid": "SubagentStart",
-    "pi": "before_agent_start"
+  {
+    canonical: "before_file_read",
+    provider: "devin",
+    target: "pre_read_code",
+    fidelity: "degraded",
   },
-  subagent_stop: {
-    "claude-code": "SubagentStop",
-    "copilot-cli": "subagentStop",
-    "cursor": "SubagentStop",
-    "vs-code-copilot": "SubagentStop",
-    "factory-droid": "SubagentStop"
+  {
+    canonical: "after_model",
+    provider: "cursor",
+    target: "afterAgentResponse",
+    fidelity: "degraded",
   },
-  error_occurred: {
-    "claude-code": "ErrorOccurred",
-    "copilot-cli": "errorOccurred",
-    "opencode": "session.error"
-  },
-  tool_use_failure: {
-    "claude-code": "PostToolUseFailure",
-    "cursor": "postToolUseFailure",
-    "copilot-cli": "errorOccurred"
-  },
-  permission_request: {
-    "claude-code": "PermissionRequest",
-    "opencode": "permission.asked"
-  },
-  after_compact: {
-    "claude-code": "PostCompact"
-  },
-  instructions_loaded: {
-    "claude-code": "InstructionsLoaded"
-  },
-  config_change: {
-    "claude-code": "ConfigChange"
-  },
-  worktree_create: {
-    "claude-code": "WorktreeCreate",
-    "windsurf": "post_setup_worktree"
-  },
-  worktree_remove: {
-    "claude-code": "WorktreeRemove"
-  },
-  elicitation: {
-    "claude-code": "Elicitation"
-  },
-  elicitation_result: {
-    "claude-code": "ElicitationResult"
-  },
-  teammate_idle: {
-    "claude-code": "TeammateIdle"
-  },
-  task_completed: {
-    "claude-code": "TaskCompleted"
-  },
-  stop_failure: {
-    "claude-code": "StopFailure"
-  },
-  before_model: {
-    "gemini-cli": "BeforeModel",
-    "cursor": "beforeAgentResponse"
-  },
-  after_model: {
-    "gemini-cli": "AfterModel",
-    "cursor": "afterAgentResponse"
-  },
-  before_tool_selection: {
-    "gemini-cli": "BeforeToolSelection",
-    "cursor": "beforeToolSelection"
-  },
-  file_changed: {
-    "claude-code": "FileChanged",
-    "cursor": "afterFileEdit",
-    "kiro": "File Save",
-    "opencode": "file.edited"
-  },
-  file_created: {
-    "kiro": "File Create"
-  },
-  file_deleted: {
-    "kiro": "File Delete"
-  },
-  before_task: {
-    "kiro": "Pre Task Execution"
-  },
-  after_task: {
-    "kiro": "Post Task Execution"
-  },
-  transcript_export: {
-    "windsurf": "post_cascade_response_with_transcript"
-  },
-  turn_start: {
-    "pi": "turn_start"
-  },
-  turn_end: {
-    "pi": "turn_end"
-  },
-  model_select: {
-    "pi": "model_select"
-  },
-  user_bash: {
-    "pi": "user_bash"
-  },
-  context_update: {
-    "pi": "context"
-  },
-  message_start: {
-    "pi": "message_start"
-  },
-  message_end: {
-    "pi": "message_end"
+];
+
+export interface HookEventRenderDiagnostic {
+  readonly id: "acif.hook.event_untranslatable";
+  readonly params: { readonly event: string; readonly provider: string };
+}
+
+export interface HookEventRenderResolution {
+  readonly event: string;
+  readonly diagnostics: readonly HookEventRenderDiagnostic[];
+}
+
+export interface HookEventRenderOptions {
+  readonly providerListedInA1: boolean;
+  readonly nativeNames?: readonly string[];
+  readonly pin?: HookEventRenderPin;
+}
+
+/** Applies the ordered Appendix A.4 rules to one canonical/provider pair. */
+export function resolveHookEventRender(
+  canonicalEvent: string,
+  provider: string,
+  options: HookEventRenderOptions,
+): HookEventRenderResolution {
+  const diagnostic: HookEventRenderDiagnostic = {
+    id: "acif.hook.event_untranslatable",
+    params: { event: canonicalEvent, provider },
+  };
+
+  // Rule 1: an explicit A.4 pin wins, including when it marks a pair degraded.
+  if (options.pin) {
+    return {
+      event: options.pin.target,
+      diagnostics: options.pin.fidelity === "degraded" ? [diagnostic] : [],
+    };
   }
-};
+
+  // Rule 5: providers outside A.1 receive canonical names without a warning.
+  if (!options.providerListedInA1) {
+    return { event: canonicalEvent, diagnostics: [] };
+  }
+
+  const nativeNames = options.nativeNames ?? [];
+  // Rule 2: exactly one A.1 name is the lossless target.
+  if (nativeNames.length === 1) {
+    return { event: nativeNames[0], diagnostics: [] };
+  }
+
+  // Rule 3: an unpinned multi-name pair has no deterministic native target.
+  if (nativeNames.length > 1) {
+    return { event: canonicalEvent, diagnostics: [diagnostic] };
+  }
+
+  // Rule 4: the provider is listed in A.1 but this event has no native name.
+  return { event: canonicalEvent, diagnostics: [diagnostic] };
+}
 
 export interface RenderResult {
   readonly output: string;
@@ -236,14 +173,20 @@ export function renderHookBlock(canonicalHook: any, target: string, targetOs?: s
 
   const diagnostics: any[] = [];
 
-  // Translate event name
+  // Resolve the canonical/provider pair using Appendix A.4's ordered rules.
   const canonicalEvent = canonicalHook.event;
   let renderedEvent = canonicalEvent;
-  if (canonicalEvent && CANONICAL_TO_NATIVE_EVENT[canonicalEvent]) {
-    const nativeMapping = CANONICAL_TO_NATIVE_EVENT[canonicalEvent][target];
-    if (nativeMapping) {
-      renderedEvent = nativeMapping;
-    }
+  if (typeof canonicalEvent === "string" && canonicalEvent.length > 0) {
+    const pin = HOOK_EVENT_RENDER_PINS.find(
+      (row) => row.canonical === canonicalEvent && row.provider === target,
+    );
+    const resolution = resolveHookEventRender(canonicalEvent, target, {
+      providerListedInA1: HOOK_EVENT_PROVIDERS.has(target),
+      nativeNames: getHookEventNativeNames(canonicalEvent, target),
+      pin,
+    });
+    renderedEvent = resolution.event;
+    diagnostics.push(...resolution.diagnostics);
   }
 
   const isPerOsMechanism = target === "per-os-key-map" || target === "per-os-key-map-provider";

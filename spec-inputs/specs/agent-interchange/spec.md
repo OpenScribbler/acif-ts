@@ -86,6 +86,8 @@ agent:
 
 **`permission_mode`**, **`background`** — OPTIONAL opaque passthrough in ACIF 0.1: carried verbatim for round-trip fidelity, no canonical enum minted. An owned enum with a total mapping is the recorded promotion path if these are ever made capability-bearing.
 
+*(Informative)* Roo Code's mode `whenToUse`, which its orchestrator reads when choosing a mode, is likewise carried as opaque passthrough and never merged into `description`. Other providers put that selection guidance in `description` itself, so it is single-provider and not a promotion candidate.
+
 **`requires`** — OPTIONAL. The recognized `requires` vocabulary for agents is empty in ACIF 0.1 (§9); any key present is non-conformant ([ACIF-CORE] §9.4).
 
 ### 6.3 Declarative, not enforced *(informative)*
@@ -127,7 +129,7 @@ Each predicate produces `{derivable-true, derivable-false}` per the boolean disc
 
 ### 9.2 OUT-OF-SCOPE-AT-L1 keys *(informative rationale)*
 
-`definition_format` is a meta-property: the canonical body *is* the format, and the source-format zoo is an [ACIF-RENDER] concern. `invocation_patterns` (@-mention vs slash vs auto-delegate) is provider picker UX — authors write a name and description; the provider chooses the surface; prose leakage of invocation intent is soft preference, not structured declaration. `agent_scopes` is install-location-determined and surfaces through `install_scope_capabilities` ([ACIF-REGISTRY]). Under the out-of-band guardrail ([ACIF-CORE] §9.3) none is `requires`-eligible.
+`definition_format` is a meta-property: the canonical body *is* the format, and the source-format zoo is an [ACIF-RENDER] concern. `invocation_patterns` (@-mention vs slash vs auto-delegate) is provider picker UX — authors write a name and description; the provider chooses the surface; prose leakage of invocation intent is soft preference, not structured declaration. `agent_scopes` is install-location-determined: scope *compatibility* surfaces through `install_scope_capabilities` ([ACIF-REGISTRY]), and the on-disk locations themselves live in the provider install-target matrix ([ACIF-INSTALL] Appendix A.2). Under the out-of-band guardrail ([ACIF-CORE] §9.3) none is `requires`-eligible.
 
 ### 9.3 Orphan keys
 
@@ -191,7 +193,7 @@ This document mints no error identifiers. Agent canonicalization has no closed e
 - [ACIF-PUBLISHER] "ACIF Publisher Record Specification", version 0.1.x. `../publisher-spec/spec.md`.
 - [ACIF-REGISTRY] "ACIF Registry Specification", version 0.1.x. `../registry-spec/spec.md`.
 - [ACIF-RENDER] "ACIF Render-Back Specification", version 0.1.x. `../render-back/spec.md`.
-- [SHAPE] ACIF design record: `SHAPE.md` and `panel/agents-requires-consensus.md` in the ACIF repository — decision provenance (Decisions #23, #25, #26, #27, #28).
+- [SHAPE] ACIF design record: `SHAPE.md` in the ACIF repository — decision provenance (Decisions #23, #25, #26, #27, #28).
 
 ---
 
@@ -205,7 +207,7 @@ Individual vector IDs are assigned in the conformance suite.
 
 ## Appendix B — Provenance and Preserved Positions (Informative)
 
-Promoted 2026-07-11 from the ACIF design record: Decisions #23 (agents application), #25, #26, #27, and #28 of `SHAPE.md`, with the full deliberation record in `panel/agents-requires-consensus.md` (unanimous empty-`requires` verdict; the walk that originated the three-way disposition, the tiebreaker rule, and the registry projection decisions).
+Promoted 2026-07-11 from the ACIF design record: Decisions #23 (agents application), #25, #26, #27, and #28 of `SHAPE.md` (unanimous empty-`requires` verdict; the walk that originated the three-way disposition, the tiebreaker rule, and the registry projection decisions).
 
 The design record carried no drawn agent extension block; the §6.1 schema was drafted at spec-promotion time from the canonical fields the record references — `tools`/`disallowed_tools`, `model`, `mcp_servers`, `skills` (Decisions #23/#28), and `permission_mode`/`background` (named as canonical fields in the panel's deferred items). Field names are the snake_case forms of the referenced struct fields. This schema was ratified back into the design record (SHAPE.md, Agent Extension Block) at promotion time.
 
