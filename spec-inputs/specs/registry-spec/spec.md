@@ -72,7 +72,8 @@ registry_section:
   provider_capability_coverage: {...} # §8.4
   install_scope_capabilities: {...}   # §8.5
   inferred_pack_id: "b2c3d4e5-..."   # OPTIONAL — [ACIF-PUBLISHER] §9; present iff
-                                      # publisher pack_id absent AND a pack was inferred
+                                      # a pack was inferred; MAY coexist with a declared
+                                      # pack_id, which wins ([ACIF-PUBLISHER] §8.3)
   pack_resolution: "inferred"         # OPTIONAL — declared | inferred | unresolved
   inference_version: "v0.1"           # REQUIRED when inferred_pack_id present
   fetched_at: "2026-05-11T18:00:00Z"  # REQUIRED — RFC 3339 with explicit offset, crawl time
@@ -126,7 +127,23 @@ An advisory signal that cannot meet all four constraints MUST NOT be emitted.
 
 ### 8.4 `provider_capability_coverage`
 
-Registries MUST surface, per canonical capability key an L1 specification disposes as a provider-matrix fact, the set of providers supporting it — a shared capability-matrix fact computed once, not per-item. Rows in 0.1: `file_imports`, `hierarchical_loading`, `cross_provider_recognition`, `auto_memory` (rules); `argument_substitution`, `builtin_commands` (commands); per-event provider recognition (`event_provider_coverage`, hooks). Proxy mechanisms MUST NOT be recorded as support. *(Informative: matrix contents are observational snapshot data; registries should publish the matrix's provenance — source and crawl date — alongside the rows so consumers can judge staleness.)*
+Registries MUST surface, per canonical capability key an L1 specification disposes as a provider-matrix fact, the set of providers supporting it — a shared capability-matrix fact computed once, not per-item. Rows in 0.1: `file_imports`, `hierarchical_loading`, `cross_provider_recognition`, `auto_memory` (rules); `argument_substitution`, `builtin_commands` (commands); per-event provider recognition (`event_provider_coverage`, hooks). Proxy mechanisms MUST NOT be recorded as support.
+
+Matrix contents are observational snapshot data, and a registry emitting this projection MUST publish the matrix's provenance as two members of the projection value itself, exactly once per matrix:
+
+```yaml
+provider_capability_coverage:
+  basis: "provider documentation survey, 2026-07"   # free text — NOT the §8.5 source enum
+  computed_at: "2026-07-10T09:00:00Z"               # RFC 3339, explicit offset
+  hierarchical_loading: [...]                       # per-key rows follow
+```
+
+The member names `basis` and `computed_at` are reserved within this projection; no canonical capability key uses them.
+
+- `basis` — a non-empty free-text string naming the observation basis the matrix was computed from (a provider build, provider documentation, or a named survey). It is not the §8.5 `source` enum. Validity predicate: one or more bytes, none in 0x00–0x1F or 0x7F; the predicate is evaluated over the raw value — no trimming or case folding is applied first.
+- `computed_at` — the instant the matrix was computed, as an RFC 3339 timestamp with an explicit offset, mirroring the §11.2 offset discipline. `computed_at` is not a freshness field: it never feeds the §11.2 predicate, and a malformed `computed_at` discloses here — never as `acif.registry.timestamp_offset_missing`. It is deliberately distinct from the envelope's `fetched_at`: the matrix is computed once, not per-item, so a conforming `computed_at` may legitimately trail every record's `fetched_at`.
+
+A projection emitted with either member absent is non-conformant (`acif.registry.coverage_provenance_missing` — the §8.4 mirror of §8.5's `provenance_tag_missing`); a projection whose member is present but fails its predicate is non-conformant (`acif.registry.coverage_provenance_invalid`). *(Informative: 0.1 defines no matrix staleness predicate — the §11.2 predicate applies to items, not to this projection; `computed_at` exists so a consumer can see how old the matrix is, not to mechanize a verdict. This observational provenance belongs to this projection alone: the deterministic exports published under `conformance/` are functions of their git revision and carry no crawl-date or observational provenance ([ACIF-INSTALL] §12); this section is not a template for them.)*
 
 ### 8.5 `install_scope_capabilities`
 
@@ -139,7 +156,7 @@ install_scope_capabilities:
   managed: {supported: false, source: publisher_claim}
 ```
 
-`source` ∈ `{canonical, publisher_claim, install_context}` — derived from the canonical body, asserted by the publisher unverified, or determined by the install mechanism. Without the tag, consumers cannot distinguish a derived scope from a claim; emitting an entry without `source` is non-conformant (`acif.registry.provenance_tag_missing`). Provider-matrix facts (e.g., hierarchical loading) do not belong here — none of the three tags can honestly source one; they live in §8.4.
+`source` ∈ `{canonical, publisher_claim, install_context}` — derived from the canonical body, asserted by the publisher unverified, or determined by the install mechanism. Without the tag, consumers cannot distinguish a derived scope from a claim; emitting an entry without `source` is non-conformant (`acif.registry.provenance_tag_missing`). Provider-matrix facts (e.g., hierarchical loading) do not belong here — none of the three tags can honestly source one; they live in §8.4. An entry tagged `source: install_context` derives from the install-target matrix ([ACIF-INSTALL] Appendix A.2, whose §7 pins the total mapping between the two scope vocabularies); where such an entry and the matrix disagree, the matrix governs and the entry has a bug.
 
 ## 9. Cross-Reference Resolution
 
@@ -236,7 +253,7 @@ The attestation trust tier is `{attested, unattested}`, consumer-evaluated. A la
 
 ### 11.4 Consumer lanes
 
-Staleness is a state flag on the warn lane: consumers SHOULD warn on stale items — the warning is `acif.registry.stale`, `params` carrying `expires` (the effective `E_sidecar` of §11.2 as an RFC 3339 timestamp); install MAY proceed. Install tools MUST provide an operator opt-in that escalates staleness to refuse. Silent-block by default and silent-ignore are both non-conformant. *(Informative: the stale-plus-attested combination warrants the stronger consumer diagnostic — staleness is the window in which an upstream-revoked attestation can still read valid; a content-revocation feed keyed on `body_hash` is the roadmap item.)*
+Staleness is a state flag on the warn lane: consumers MUST warn on stale items — the warning is `acif.registry.stale`, `params` carrying `expires` (the effective `E_sidecar` of §11.2 as an RFC 3339 timestamp); install MAY proceed. Install tools MUST provide an operator opt-in that escalates staleness to refuse. Silent-block by default and silent-ignore are both non-conformant. *(Informative: the stale-plus-attested combination warrants the stronger consumer diagnostic — staleness is the window in which an upstream-revoked attestation can still read valid; a content-revocation feed keyed on `body_hash` is the roadmap item.)*
 
 ## 12. Error Identifiers
 
@@ -256,6 +273,8 @@ Staleness is a state flag on the warn lane: consumers SHOULD warn on stale items
 | `acif.registry.reference_unresolved` | diagnostic (MUST-emit) | Cross-reference resolution lands `unresolved` or `revoked`; params: `declared_name` (the declared reference string as written) (§9) |
 | `acif.registry.method_stamp_missing` | reject (verdict) | Advisory-tier entry emitted without its REQUIRED method-version stamp (§8.3) |
 | `acif.registry.provenance_tag_missing` | reject (verdict) | `install_scope_capabilities` entry emitted without its `source` tag (§8.5) |
+| `acif.registry.coverage_provenance_missing` | reject (verdict) | `provider_capability_coverage` projection emitted with `basis` or `computed_at` absent (§8.4) |
+| `acif.registry.coverage_provenance_invalid` | reject (verdict) | `provider_capability_coverage` provenance member present but failing its §8.4 predicate |
 | `acif.registry.timestamp_offset_missing` | reject (verdict) | Freshness field timestamp lacks an explicit offset (§11.2) |
 
 Rows classed `reject (verdict)` follow the minted-ahead-of-assertion discipline defined at [ACIF-CORE] §8.7: the condition is conformance-tested today through the `{conformant: false}` verdict, and the identifier value is unasserted under `adapter_protocol: 1`.
@@ -291,7 +310,7 @@ Reject-class identifiers here bind the registry at the record-emit boundary: a r
 ### 14.2 Informative
 
 - [ACIF-RENDER] "ACIF Render-Back Specification", version 0.1.x. `../render-back/spec.md`.
-- [SHAPE] ACIF design record: `SHAPE.md`, `panel/source-uri-consensus.md`, and `panel/freshness-consensus.md` in the ACIF repository — decision provenance (Decisions #13, #17, #26, #27, #28, #32, #34).
+- [SHAPE] ACIF design record: `SHAPE.md` in the ACIF repository — decision provenance (Decisions #13, #17, #26, #27, #28, #32, #34).
 
 ---
 
@@ -309,7 +328,7 @@ Individual vector IDs are assigned in the conformance suite.
 
 ## Appendix B — Provenance and Preserved Positions (Informative)
 
-Promoted 2026-07-11 from the ACIF design record: the registry-section schema and Decisions #13, #17, #26, #27, #28, #32, and #34 of `SHAPE.md`, with deliberation records in `panel/source-uri-consensus.md` and `panel/freshness-consensus.md` (the project's two-reviewer mini-review format).
+Promoted 2026-07-11 from the ACIF design record: the registry-section schema and Decisions #13, #17, #26, #27, #28, #32, and #34 of `SHAPE.md`.
 
 Preserved positions recorded for future revision: post-redirect **final-URL recording was considered and rejected** on operational scale evidence (signed expiring asset URLs, delivery-host churn, geographic divergence) — if a future revision revisits redirect semantics, that evidence is the bar to clear; spec-purist's freshness dissent — an OPTIONAL informative `attestation_valid_until` mirror for offline consumers, with his absence semantics as the recorded design and the constraint that it MUST NOT be a staleness input — is the roadmap valve; the `min(sidecar, attestation)` blended-expiry strawman was rejected from both directions (unimplementable and operationally vacuous-or-storm) and its rejection is load-bearing for §11.
 

@@ -163,6 +163,8 @@ Each predicate produces `{derivable-true, derivable-false}` per the boolean disc
 
 `marketplace` is registry-inference territory (aggregators observe the canonical block and project their own listings; the publisher is the wrong source of truth for cross-marketplace identity). `enterprise_management` is organization-policy surface, outside the publish pipeline. `resource_referencing` is provider UX. Under the out-of-band guardrail ([ACIF-CORE] §9.3) none is `requires`-eligible; none is author-declared.
 
+`mcp_scopes` is install-location-determined ([ACIF-CORE] §9.2): the canonical block carries no install path. Which scopes a provider offers is a provider-matrix fact ([ACIF-CORE] §9.3) recorded in [ACIF-INSTALL] Appendix A.2, and the scope an item lands at is decided at install time. Publisher scope intent surfaces only as an unverified `source: publisher_claim` entry in `install_scope_capabilities` ([ACIF-REGISTRY] §8.5), never as an item field; because the block carries no install path, no such entry for an MCP configuration can carry `source: canonical`. The key names install location only: how a provider merges server definitions found at several scopes is a provider-matrix fact, not part of this key. It is the MCP counterpart of [ACIF-AGENT] `agent_scopes` and [ACIF-HOOK] `hook_scopes`. It is neither body-carried nor a user-environment fact and is not `requires`-eligible.
+
 Roadmap candidates recorded: `env_file_reference` and `path_variable_expansion` are wiring-observable today (an `envFile` field; literal `${userHome}`-style tokens in wiring values) and become `requires` candidates only if a future provider moves the capability out of the wiring.
 
 ### 9.3 Rejected sub-blocks *(informative)*
@@ -236,7 +238,7 @@ Reject-class identifiers make canonicalization fail; the INFORMATIVE diagnostic 
 - [ACIF-PUBLISHER] "ACIF Publisher Record Specification", version 0.1.x. `../publisher-spec/spec.md`.
 - [ACIF-REGISTRY] "ACIF Registry Specification", version 0.1.x. `../registry-spec/spec.md`.
 - [ACIF-RENDER] "ACIF Render-Back Specification", version 0.1.x. `../render-back/spec.md`.
-- [SHAPE] ACIF design record: `SHAPE.md` and `panel/mcp-requires-consensus.md` in the ACIF repository — decision provenance (Decisions #23, #24).
+- [SHAPE] ACIF design record: `SHAPE.md` in the ACIF repository — decision provenance (Decisions #23, #24).
 
 ---
 
@@ -250,10 +252,12 @@ Individual vector IDs are assigned in the conformance suite.
 
 ## Appendix B — Provenance and Preserved Positions (Informative)
 
-Promoted 2026-07-11 from the ACIF design record: the MCP extension block and Decisions #23 (MCP application) and #24 of `SHAPE.md`, with the full deliberation record in `panel/mcp-requires-consensus.md` (the first capability walk; unanimous; origin of the derivability principle and the named-error-code discipline).
+Promoted 2026-07-11 from the ACIF design record: the MCP extension block and Decisions #23 (MCP application) and #24 of `SHAPE.md` (the first capability walk; unanimous; origin of the derivability principle and the named-error-code discipline).
 
 Preserved positions and roadmap items: `env_file_reference` and `path_variable_expansion` as future `requires` candidates if the capability ever leaves the wiring; the marketplace identity model and enterprise/org-policy surface, both cut from the publisher schema with the ownership rationale recorded (§9.3); MCP working-group precedence over the server-name recommendation (§6.2).
 
 Newly minted at spec-promotion time (not present in the design record; flagged for review): the error identifiers `acif.mcp.servers_missing`, `acif.mcp.transport_type_invalid`, and `acif.mcp.server_name_unconventional` (the design record carried only the two Decision #24 codes); the §8 preimage pinning (the design record's Decision #33 amendment established that sidecar-only preimages cover the whole extension block but pinned the exact serialization only for hooks; this document instantiates it for MCP, including the empty-manifest constant and the §8.3 array-ordering pins required by [ACIF-CORE] §8.6); and the §9.1/§9.2 restatement of the design record's "all eight keys DERIVABLE" summary sentence as 5 DERIVABLE / 3 OUT-OF-SCOPE-AT-L1 — the consensus document's own per-key table classifies `marketplace`, `enterprise_management`, and `resource_referencing` as out-of-band concerns, and this document applies the mature three-way vocabulary to that substance (the `requires` result is unchanged: empty). These items were ratified back into the design record (SHAPE.md, Spec-Promotion Ratifications section) at promotion time.
 
 Amended after the second independent review (2026-07-11): the §8.3 tool-filter set closed to the four named lists (an open-ended membership test would make canonical bytes implementation-dependent).
+
+Amended 2026-09-30 (SHAPE.md Decision #48, Class C): `mcp_scopes` added to §9.2 as an OUT-OF-SCOPE-AT-L1 install-location key, so this vocabulary carries a scope key as the agent and hook vocabularies do.
