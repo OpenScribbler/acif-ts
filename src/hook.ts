@@ -1,170 +1,388 @@
 import { AcifBodyHashError } from "./body_hash";
 
-// Canonical events from Appendix A.1 of ACIF-HOOK
-export const CANONICAL_EVENTS = new Set([
-  "before_tool_execute",
-  "after_tool_execute",
-  "before_prompt",
-  "agent_stop",
-  "session_start",
-  "session_end",
-  "before_compact",
-  "notification",
-  "subagent_start",
-  "subagent_stop",
-  "error_occurred",
-  "tool_use_failure",
-  "permission_request",
-  "after_compact",
-  "instructions_loaded",
-  "config_change",
-  "worktree_create",
-  "worktree_remove",
-  "elicitation",
-  "elicitation_result",
-  "teammate_idle",
-  "task_completed",
-  "stop_failure",
-  "before_model",
-  "after_model",
-  "before_tool_selection",
-  "file_changed",
-  "file_created",
-  "file_deleted",
-  "before_task",
-  "after_task",
-  "transcript_export",
-  "turn_start",
-  "turn_end",
-  "model_select",
-  "user_bash",
-  "context_update",
-  "message_start",
-  "message_end",
-]);
+export interface HookEventRow {
+  readonly canonical: string;
+  readonly providers: Readonly<Record<string, readonly string[]>>;
+}
 
-// Provider-native to canonical event mappings from Appendix A.1
-export const PROVIDER_EVENT_MAPPINGS: Record<string, string[]> = {
-  // before_tool_execute
-  "PreToolUse": ["before_tool_execute"],
-  "BeforeTool": ["before_tool_execute"],
-  "preToolUse": ["before_tool_execute"],
-  "tool.execute.before": ["before_tool_execute"],
-  "tool_call": ["before_tool_execute"],
-  // after_tool_execute
-  "PostToolUse": ["after_tool_execute"],
-  "AfterTool": ["after_tool_execute"],
-  "postToolUse": ["after_tool_execute"],
-  "tool.execute.after": ["after_tool_execute"],
-  "tool_result": ["after_tool_execute"],
-  // before_prompt
-  "UserPromptSubmit": ["before_prompt"],
-  "BeforeAgent": ["before_prompt"],
-  "userPromptSubmitted": ["before_prompt"],
-  "userPromptSubmit": ["before_prompt"],
-  "pre_user_prompt": ["before_prompt"],
-  "input": ["before_prompt"],
-  // agent_stop
-  "Stop": ["agent_stop"],
-  "AfterAgent": ["agent_stop"],
-  "stop": ["agent_stop"],
-  "agentStop": ["agent_stop"],
-  "post_cascade_response": ["agent_stop"],
-  "session.idle": ["agent_stop"],
-  "agent_end": ["agent_stop"],
-  // session_start
-  "SessionStart": ["session_start"],
-  "agentSpawn": ["session_start"],
-  "session_start": ["session_start"],
-  "session.created": ["session_start"],
-  "sessionStart": ["session_start"], // 1. Appendix A.1 transcription gap: sessionStart -> session_start
-  // session_end
-  "SessionEnd": ["session_end"],
-  "sessionEnd": ["session_end"],
-  "session_end": ["session_end"],
-  "session_shutdown": ["session_end"],
-  // before_compact
-  "PreCompact": ["before_compact"],
-  "PreCompress": ["before_compact"],
-  "session_before_compact": ["before_compact"],
-  // notification
-  "Notification": ["notification"],
-  // subagent_start
-  "SubagentStart": ["subagent_start"],
-  "before_agent_start": ["subagent_start"],
-  // subagent_stop
-  "SubagentStop": ["subagent_stop"],
-  "subagentStop": ["subagent_stop"],
-  // error_occurred
-  "ErrorOccurred": ["error_occurred"],
-  "errorOccurred": ["error_occurred", "tool_use_failure"], // maps to both
-  "session.error": ["error_occurred"],
-  // tool_use_failure
-  "PostToolUseFailure": ["tool_use_failure"],
-  "postToolUseFailure": ["tool_use_failure"],
-  // permission_request
-  "PermissionRequest": ["permission_request"],
-  "permission.asked": ["permission_request"],
-  // after_compact
-  "PostCompact": ["after_compact"],
-  // instructions_loaded
-  "InstructionsLoaded": ["instructions_loaded"],
-  // config_change
-  "ConfigChange": ["config_change"],
-  // worktree_create
-  "WorktreeCreate": ["worktree_create"],
-  "post_setup_worktree": ["worktree_create"],
-  // worktree_remove
-  "WorktreeRemove": ["worktree_remove"],
-  // elicitation
-  "Elicitation": ["elicitation"],
-  // elicitation_result
-  "ElicitationResult": ["elicitation_result"],
-  // teammate_idle
-  "TeammateIdle": ["teammate_idle"],
-  // task_completed
-  "TaskCompleted": ["task_completed"],
-  // stop_failure
-  "StopFailure": ["stop_failure"],
-  // before_model
-  "BeforeModel": ["before_model"],
-  "beforeAgentResponse": ["before_model"],
-  // after_model
-  "AfterModel": ["after_model"],
-  "afterAgentResponse": ["after_model"],
-  // before_tool_selection
-  "BeforeToolSelection": ["before_tool_selection"],
-  "beforeToolSelection": ["before_tool_selection"],
-  // file_changed
-  "FileChanged": ["file_changed"],
-  "afterFileEdit": ["file_changed"],
-  "File Save": ["file_changed"],
-  "file.edited": ["file_changed"],
-  // file_created
-  "File Create": ["file_created"],
-  // file_deleted
-  "File Delete": ["file_deleted"],
-  // before_task
-  "Pre Task Execution": ["before_task"],
-  // after_task
-  "Post Task Execution": ["after_task"],
-  // transcript_export
-  "post_cascade_response_with_transcript": ["transcript_export"],
-  // turn_start
-  "turn_start": ["turn_start"],
-  // turn_end
-  "turn_end": ["turn_end"],
-  // model_select
-  "model_select": ["model_select"],
-  // user_bash
-  "user_bash": ["user_bash"],
-  // context_update
-  "context": ["context_update"],
-  // message_start
-  "message_start": ["message_start"],
-  // message_end
-  "message_end": ["message_end"],
-};
+// The single transcription of Appendix A.1. Every event and provider lookup
+// below is derived from this table.
+export const HOOK_EVENT_TABLE: readonly HookEventRow[] = [
+  {
+    canonical: "before_tool_execute",
+    providers: {
+      "claude-code": ["PreToolUse"],
+      "gemini-cli": ["BeforeTool"],
+      "copilot-cli": ["preToolUse"],
+      "kiro": ["preToolUse"],
+      "cursor": ["preToolUse"],
+      "devin": ["PreToolUse"],
+      "opencode": ["tool.execute.before"],
+      "vs-code-copilot": ["PreToolUse"],
+      "factory-droid": ["PreToolUse"],
+      "pi": ["tool_call"],
+    },
+  },
+  {
+    canonical: "after_tool_execute",
+    providers: {
+      "claude-code": ["PostToolUse"],
+      "gemini-cli": ["AfterTool"],
+      "copilot-cli": ["postToolUse"],
+      "kiro": ["postToolUse"],
+      "cursor": ["postToolUse"],
+      "devin": ["PostToolUse"],
+      "opencode": ["tool.execute.after"],
+      "vs-code-copilot": ["PostToolUse"],
+      "factory-droid": ["PostToolUse"],
+      "pi": ["tool_result"],
+    },
+  },
+  {
+    canonical: "before_shell_execute",
+    providers: {
+      "cursor": ["beforeShellExecution"],
+      "devin": ["pre_run_command"],
+    },
+  },
+  {
+    canonical: "after_shell_execute",
+    providers: {
+      "cursor": ["afterShellExecution"],
+      "devin": ["post_run_command"],
+    },
+  },
+  {
+    canonical: "before_mcp_execute",
+    providers: {
+      "cursor": ["beforeMCPExecution"],
+      "devin": ["pre_mcp_tool_use"],
+    },
+  },
+  {
+    canonical: "after_mcp_execute",
+    providers: {
+      "cursor": ["afterMCPExecution"],
+      "devin": ["post_mcp_tool_use"],
+    },
+  },
+  {
+    canonical: "before_file_read",
+    providers: {
+      "cursor": ["beforeReadFile"],
+      "devin": ["pre_read_code"],
+    },
+  },
+  {
+    canonical: "before_prompt",
+    providers: {
+      "claude-code": ["UserPromptSubmit"],
+      "gemini-cli": ["BeforeAgent"],
+      "copilot-cli": ["userPromptSubmitted"],
+      "kiro": ["userPromptSubmit"],
+      "cursor": ["beforeSubmitPrompt"],
+      "devin": ["UserPromptSubmit", "pre_user_prompt"],
+      "vs-code-copilot": ["UserPromptSubmit"],
+      "factory-droid": ["UserPromptSubmit"],
+      "pi": ["input"],
+    },
+  },
+  {
+    canonical: "agent_stop",
+    providers: {
+      "claude-code": ["Stop"],
+      "gemini-cli": ["AfterAgent"],
+      "kiro": ["stop"],
+      "copilot-cli": ["agentStop"],
+      "cursor": ["stop"],
+      "devin": ["Stop", "post_cascade_response"],
+      "opencode": ["session.idle"],
+      "vs-code-copilot": ["Stop"],
+      "factory-droid": ["Stop"],
+      "pi": ["agent_end"],
+    },
+  },
+  {
+    canonical: "session_start",
+    providers: {
+      "claude-code": ["SessionStart"],
+      "gemini-cli": ["SessionStart"],
+      "copilot-cli": ["sessionStart"],
+      "kiro": ["agentSpawn"],
+      "cursor": ["sessionStart"],
+      "devin": ["SessionStart", "session_start"],
+      "opencode": ["session.created"],
+      "vs-code-copilot": ["SessionStart"],
+      "factory-droid": ["SessionStart"],
+      "pi": ["session_start"],
+    },
+  },
+  {
+    canonical: "session_end",
+    providers: {
+      "claude-code": ["SessionEnd"],
+      "gemini-cli": ["SessionEnd"],
+      "copilot-cli": ["sessionEnd"],
+      "cursor": ["sessionEnd"],
+      "devin": ["SessionEnd", "session_end"],
+      "factory-droid": ["SessionEnd"],
+      "pi": ["session_shutdown"],
+    },
+  },
+  {
+    canonical: "before_compact",
+    providers: {
+      "claude-code": ["PreCompact"],
+      "gemini-cli": ["PreCompress"],
+      "cursor": ["preCompact"],
+      "vs-code-copilot": ["PreCompact"],
+      "factory-droid": ["PreCompact"],
+      "pi": ["session_before_compact"],
+    },
+  },
+  {
+    canonical: "notification",
+    providers: {
+      "claude-code": ["Notification"],
+      "gemini-cli": ["Notification"],
+      "factory-droid": ["Notification"],
+    },
+  },
+  {
+    canonical: "subagent_start",
+    providers: {
+      "claude-code": ["SubagentStart"],
+      "cursor": ["subagentStart"],
+      "vs-code-copilot": ["SubagentStart"],
+      "pi": ["before_agent_start"],
+    },
+  },
+  {
+    canonical: "subagent_stop",
+    providers: {
+      "claude-code": ["SubagentStop"],
+      "copilot-cli": ["subagentStop"],
+      "cursor": ["subagentStop"],
+      "vs-code-copilot": ["SubagentStop"],
+      "factory-droid": ["SubagentStop"],
+    },
+  },
+  {
+    canonical: "error_occurred",
+    providers: {
+      "claude-code": ["ErrorOccurred"],
+      "copilot-cli": ["errorOccurred"],
+      "opencode": ["session.error"],
+    },
+  },
+  {
+    canonical: "tool_use_failure",
+    providers: {
+      "claude-code": ["PostToolUseFailure"],
+      "cursor": ["postToolUseFailure"],
+      "copilot-cli": ["errorOccurred"],
+    },
+  },
+  {
+    canonical: "permission_request",
+    providers: {
+      "claude-code": ["PermissionRequest"],
+      "devin": ["PermissionRequest"],
+      "opencode": ["permission.asked"],
+    },
+  },
+  {
+    canonical: "after_compact",
+    providers: {
+      "claude-code": ["PostCompact"],
+      "devin": ["PostCompaction"],
+    },
+  },
+  {
+    canonical: "instructions_loaded",
+    providers: {
+      "claude-code": ["InstructionsLoaded"],
+    },
+  },
+  {
+    canonical: "config_change",
+    providers: {
+      "claude-code": ["ConfigChange"],
+    },
+  },
+  {
+    canonical: "worktree_create",
+    providers: {
+      "claude-code": ["WorktreeCreate"],
+      "devin": ["post_setup_worktree"],
+    },
+  },
+  {
+    canonical: "worktree_remove",
+    providers: {
+      "claude-code": ["WorktreeRemove"],
+    },
+  },
+  {
+    canonical: "elicitation",
+    providers: {
+      "claude-code": ["Elicitation"],
+    },
+  },
+  {
+    canonical: "elicitation_result",
+    providers: {
+      "claude-code": ["ElicitationResult"],
+    },
+  },
+  {
+    canonical: "teammate_idle",
+    providers: {
+      "claude-code": ["TeammateIdle"],
+    },
+  },
+  {
+    canonical: "task_completed",
+    providers: {
+      "claude-code": ["TaskCompleted"],
+    },
+  },
+  {
+    canonical: "stop_failure",
+    providers: {
+      "claude-code": ["StopFailure"],
+    },
+  },
+  {
+    canonical: "before_model",
+    providers: {
+      "gemini-cli": ["BeforeModel"],
+    },
+  },
+  {
+    canonical: "after_model",
+    providers: {
+      "gemini-cli": ["AfterModel"],
+      "cursor": ["afterAgentResponse"],
+    },
+  },
+  {
+    canonical: "before_tool_selection",
+    providers: {
+      "gemini-cli": ["BeforeToolSelection"],
+    },
+  },
+  {
+    canonical: "file_changed",
+    providers: {
+      "claude-code": ["FileChanged"],
+      "cursor": ["afterFileEdit"],
+      "devin": ["post_write_code"],
+      "kiro": ["File Save"],
+      "opencode": ["file.edited"],
+    },
+  },
+  {
+    canonical: "file_created",
+    providers: {
+      "kiro": ["File Create"],
+    },
+  },
+  {
+    canonical: "file_deleted",
+    providers: {
+      "kiro": ["File Delete"],
+    },
+  },
+  {
+    canonical: "before_task",
+    providers: {
+      "kiro": ["Pre Task Execution"],
+    },
+  },
+  {
+    canonical: "after_task",
+    providers: {
+      "kiro": ["Post Task Execution"],
+    },
+  },
+  {
+    canonical: "transcript_export",
+    providers: {
+      "devin": ["post_cascade_response_with_transcript"],
+    },
+  },
+  {
+    canonical: "turn_start",
+    providers: {
+      "pi": ["turn_start"],
+    },
+  },
+  {
+    canonical: "turn_end",
+    providers: {
+      "pi": ["turn_end"],
+    },
+  },
+  {
+    canonical: "model_select",
+    providers: {
+      "pi": ["model_select"],
+    },
+  },
+  {
+    canonical: "user_bash",
+    providers: {
+      "pi": ["user_bash"],
+    },
+  },
+  {
+    canonical: "context_update",
+    providers: {
+      "pi": ["context"],
+    },
+  },
+  {
+    canonical: "message_start",
+    providers: {
+      "pi": ["message_start"],
+    },
+  },
+  {
+    canonical: "message_end",
+    providers: {
+      "pi": ["message_end"],
+    },
+  },
+];
+
+export const CANONICAL_EVENTS = new Set(HOOK_EVENT_TABLE.map(({ canonical }) => canonical));
+
+const nativeEventMappings = Object.create(null) as Record<string, string[]>;
+const hookEventProviders = new Set<string>();
+for (const row of HOOK_EVENT_TABLE) {
+  for (const [provider, nativeNames] of Object.entries(row.providers)) {
+    hookEventProviders.add(provider);
+    for (const nativeName of nativeNames) {
+      const canonicalNames = nativeEventMappings[nativeName] ??= [];
+      if (!canonicalNames.includes(row.canonical)) {
+        canonicalNames.push(row.canonical);
+      }
+    }
+  }
+}
+
+// Derived views of A.1; these are not independently maintained mappings.
+export const PROVIDER_EVENT_MAPPINGS: Readonly<Record<string, readonly string[]>> = nativeEventMappings;
+export const HOOK_EVENT_PROVIDERS: ReadonlySet<string> = hookEventProviders;
+
+const HOOK_EVENT_ROWS_BY_CANONICAL = new Map(
+  HOOK_EVENT_TABLE.map((row) => [row.canonical, row] as const),
+);
+
+export function getHookEventNativeNames(canonicalEvent: string, provider: string): readonly string[] | undefined {
+  return HOOK_EVENT_ROWS_BY_CANONICAL.get(canonicalEvent)?.providers[provider];
+}
 
 export function translateEventName(event: unknown): string {
   if (typeof event !== "string") {
@@ -369,6 +587,16 @@ export function translateMatcher(matcher: string): string {
   return translated.join("|");
 }
 
+// ACIF-HOOK §6.2: these matchers filter command/server/file-read values, not
+// tool names, so they bypass ACIF-CORE Appendix A.3 byte for byte.
+export const MATCHER_PASSTHROUGH_EVENTS: ReadonlySet<string> = new Set([
+  "before_shell_execute",
+  "after_shell_execute",
+  "before_mcp_execute",
+  "after_mcp_execute",
+  "before_file_read",
+]);
+
 export function canonicalizeHook(input: unknown): Record<string, unknown> {
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
     throw new Error("Expected plain object for hook extension block");
@@ -395,7 +623,9 @@ export function canonicalizeHook(input: unknown): Record<string, unknown> {
       if (matcherVal === "") {
         delete output.matcher;
       } else {
-        output.matcher = translateMatcher(matcherVal);
+        output.matcher = MATCHER_PASSTHROUGH_EVENTS.has(canonicalEvent)
+          ? matcherVal
+          : translateMatcher(matcherVal);
       }
     } else {
       delete output.matcher;
